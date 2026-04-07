@@ -116,14 +116,19 @@ def adaptive_window_softargmax(
         ent = 1.0
 
     # --- 2. Adaptive radius ---
-    if ent <= entropy_threshold_low:
+    if math.isnan(ent) or math.isinf(ent):
+        radius = max_radius
+    elif ent <= entropy_threshold_low:
         radius = min_radius
     elif ent >= entropy_threshold_high:
         radius = max_radius
     else:
         # Linear interpolation between thresholds
-        t      = (ent - entropy_threshold_low) / (entropy_threshold_high - entropy_threshold_low)
-        radius = int(round(min_radius + t * (max_radius - min_radius)))
+        t = (ent - entropy_threshold_low) / (entropy_threshold_high - entropy_threshold_low)
+        if math.isnan(t) or math.isinf(t):
+            radius = max_radius
+        else:
+            radius = int(round(min_radius + t * (max_radius - min_radius)))
 
     # --- 3. Coarse argmax peak ---
     peak_flat = probs_flat.argmax().item()
