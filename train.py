@@ -52,7 +52,7 @@ def correspondence_loss(
 # Training loop
 # ---------------------------------------------------------------------------
 
-def train_one_epoch(model, loader, optimizer, device, epoch, config):
+def train_one_epoch(model, loader, optimizer, device, epoch, config, scaler):
     model.train()
     running_loss = 0.0
     running_pck  = 0.0
@@ -75,12 +75,14 @@ def train_one_epoch(model, loader, optimizer, device, epoch, config):
             out = model(src_img, trg_img, src_kps=src_kps)
             loss = correspondence_loss(out["pred_kps"], trg_kps, kps_mask)
 
-        loss.backward()
+        scaler.scale(loss).backward()
         
-        # Gradient clipping (important for stable ViT training)
+        # Gradient clipping deve avvenire dopo unscale
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
 
         pck_score = pck(out["pred_kps"].detach(), trg_kps,
                         img_size=src_img.shape[-1], alpha=0.1, mask=kps_mask)
@@ -257,6 +259,7 @@ def main():
     )
 
     # ---- Training ----
+    scaler = torch.cuda.amp.GradScaler(enabled=device.type=='cuda')
     best_pck = 0.0
     for epoch in range(1, args.epochs + 1):
         # Advance curriculum sampler
@@ -266,7 +269,7 @@ def main():
             print(f"[Curriculum] Epoch {epoch}: using {active_frac*100:.1f}% of training pairs")
 
         train_loss, train_pck, mean_ent = train_one_epoch(
-            model, train_loader, optimizer, device, epoch, config
+            model, train_loader, optimizer, device, epoch, config, scaler
         )
         val_pck = validate(model, val_loader, device, alpha=0.1)
         scheduler.step()
