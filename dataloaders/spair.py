@@ -70,10 +70,18 @@ class SPairDataset(Dataset):
 
         # Collect annotation files
         ann_dir = os.path.join(root, "ImageAnnotation")
+        if not os.path.isdir(ann_dir):
+            raise FileNotFoundError(f"[ERROR] Cartella annotazioni non trovata in {ann_dir}. "
+                                    f"Verifica il percorso --dataset_root.")
+            
         all_jsons = sorted(glob.glob(os.path.join(ann_dir, "**", "*.json"), recursive=True))
 
         # Filter by split file
         split_file = os.path.join(root, "Layout", "large", f"{split}.txt")
+        if not os.path.isfile(split_file):
+             raise FileNotFoundError(f"[ERROR] File di split non trovato in {split_file}. "
+                                     f"Assicurati che SPair-71k sia estratto correttamente.")
+
         with open(split_file, "r") as f:
             valid_ids = set(line.strip() for line in f if line.strip())
 
@@ -86,6 +94,10 @@ class SPairDataset(Dataset):
             if categories and cat not in categories:
                 continue
             self.samples.append(jpath)
+            
+        if len(self.samples) == 0:
+            raise ValueError(f"[ERROR] Nessun campione trovato per lo split '{split}' in {root}. "
+                             f"Controlla i file JSON in ImageAnnotation.")
 
     def __len__(self) -> int:
         return len(self.samples)

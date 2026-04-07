@@ -115,6 +115,10 @@ class CurriculumSampler(Sampler):
 
         print("[Curriculum] Scoring dataset difficulty …", flush=True)
         self._scores = np.array(score_dataset(dataset))
+        
+        if len(self._scores) == 0:
+            raise ValueError("[Curriculum ERROR] Dataset vuoto o campioni non trovati. Verifica il path del dataset.")
+            
         # Indices sorted from easiest (0) to hardest (1)
         self._sorted_idx = np.argsort(self._scores).tolist()
         print(f"[Curriculum] Done. Score range: "
