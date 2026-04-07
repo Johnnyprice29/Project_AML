@@ -102,7 +102,7 @@ class CurriculumSampler(Sampler):
         drop_last: bool = False,
         seed: int = 42,
     ):
-        super().__init__(dataset)
+        super().__init__()
         self.dataset           = dataset
         self.batch_size        = batch_size
         self.total_epochs      = total_epochs
