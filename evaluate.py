@@ -27,11 +27,13 @@ from utils.metrics import pck, pck_per_category
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate Semantic Correspondence Model")
     parser.add_argument("--dataset_root", type=str, required=True)
-    parser.add_argument("--checkpoint",   type=str, required=True)
+    parser.add_argument("--checkpoint",   type=str, default="", help="Path to best.pth")
+    parser.add_argument("--baseline_only", action="store_true", help="Test pure DINOv2 without LoRA/weights")
     parser.add_argument("--alpha",        type=float, default=0.1)
     parser.add_argument("--img_size",     type=int, default=224)
     parser.add_argument("--batch_size",   type=int, default=16)
     parser.add_argument("--num_workers",  type=int, default=4)
+    parser.add_argument("--no_adaptive_win", action="store_true", help="Disable adaptive window")
     return parser.parse_args()
 
 
@@ -42,29 +44,39 @@ def main():
     print(f"[INFO] Device: {device}")
 
     # ---- Load checkpoint ----
-    ckpt = torch.load(args.checkpoint, map_location=device)
-    saved_args = ckpt.get("args", {})
+    if not args.baseline_only:
+        assert args.checkpoint, "Must provide --checkpoint unless --baseline_only is used"
+        ckpt = torch.load(args.checkpoint, map_location=device)
+        saved_args = ckpt.get("args", {})
+    else:
+        print("[INFO] BASELINE MODE: Testing pure DINOv2 without LoRA!")
+        ckpt = {}
+        saved_args = {}
 
     backbone = DINOv2Extractor(
         model_name=saved_args.get("backbone", "dinov2_vitb14"),
         freeze=True,
     )
-    # Applica LoRA con gli stessi parametri del training (default rank=16)
-    backbone.model = apply_lora_to_dinov2(
-        backbone.model, 
-        rank=saved_args.get("lora_rank", 16),
-        lora_alpha=saved_args.get("lora_alpha", 32)
-    )
+    
+    if not args.baseline_only:
+        # Applica LoRA con gli stessi parametri del training (default rank=16)
+        backbone.model = apply_lora_to_dinov2(
+            backbone.model, 
+            rank=saved_args.get("lora_rank", 16),
+            lora_alpha=saved_args.get("lora_alpha", 32)
+        )
 
     model = SemanticCorrespondenceModel(
         backbone=backbone,
         proj_dim=saved_args.get("proj_dim", 256),
         temperature=saved_args.get("temperature", 0.05),
+        use_adaptive_win=not args.no_adaptive_win,
     ).to(device)
 
-    model.load_state_dict(ckpt["model_state_dict"])
+    if not args.baseline_only:
+        model.load_state_dict(ckpt["model_state_dict"])
+        print(f"[INFO] Loaded checkpoint from epoch {ckpt.get('epoch', '?')}")
     model.eval()
-    print(f"[INFO] Loaded checkpoint from epoch {ckpt.get('epoch', '?')}")
 
     # ---- Dataset ----
     test_ds     = SPairDataset(args.dataset_root, split="test", img_size=args.img_size)
