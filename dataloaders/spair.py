@@ -85,6 +85,11 @@ class SPairDataset(Dataset):
             valid_ids = set(line.strip() for line in f if line.strip())
 
         print(f"[DEBUG] Found {len(all_jsons)} JSONs total and {len(valid_ids)} valid IDs for split '{split}'.")
+        if len(all_jsons) > 0:
+            print(f"[DEBUG] Sample JSON path: {all_jsons[0]}")
+            print(f"[DEBUG] Sample JSON pair_id: {os.path.splitext(os.path.basename(all_jsons[0]))[0]}")
+        if len(valid_ids) > 0:
+            print(f"[DEBUG] Sample valid ID: {list(valid_ids)[0]}")
 
         self.samples = []
         for jpath in all_jsons:
@@ -98,7 +103,7 @@ class SPairDataset(Dataset):
             
         if len(self.samples) == 0:
             raise ValueError(f"[ERROR] Nessun campione trovato per lo split '{split}' in {root}. "
-                             f"JSONs trovati: {len(all_jsons)}, IDs validi: {len(valid_ids)}")
+                             f"Nessun match fra i {len(all_jsons)} file JSON trovati e i {len(valid_ids)} ID validi.")
 
     def __len__(self) -> int:
         return len(self.samples)
