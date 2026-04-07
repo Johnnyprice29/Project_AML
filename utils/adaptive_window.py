@@ -111,6 +111,10 @@ def adaptive_window_softargmax(
     probs_flat  = F.softmax(sim_row.float(), dim=0)          # (h*w,)
     ent         = distribution_entropy(probs_flat).item()
 
+    # Salvaguardia contro instabilità numeriche dovute ad AMP (Float16)
+    if math.isnan(ent):
+        ent = 1.0
+
     # --- 2. Adaptive radius ---
     if ent <= entropy_threshold_low:
         radius = min_radius
