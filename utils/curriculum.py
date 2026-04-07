@@ -34,7 +34,7 @@ from typing import List, Iterator
 import numpy as np
 from torch.utils.data import Sampler
 
-from data.dataset import SPairDataset
+from dataloaders.spair import SPairDataset
 
 
 # ---------------------------------------------------------------------------
