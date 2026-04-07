@@ -50,16 +50,18 @@ def correspondence_loss(
 # Training loop
 # ---------------------------------------------------------------------------
 
-def train_one_epoch(model, loader, optimizer, device, epoch):
+def train_one_epoch(model, loader, optimizer, device, epoch, config):
     model.train()
     running_loss = 0.0
     running_pck  = 0.0
     running_ent  = 0.0
 
     pbar = tqdm(loader, desc=f"Epoch {epoch}", unit="batch")
-    for batch in pbar:
-        src_img  = batch["src_img"].to(device)
-        trg_img  = batch["trg_img"].to(device)
+    for i, batch in enumerate(pbar):
+        if config.get("max_batches") and i >= config["max_batches"]:
+            break
+            
+        src_img, trg_img = batch["src_img"].to(device), batch["trg_img"].to(device)
         src_kps  = batch["src_kps"].to(device)   # (B, N, 2)
         trg_kps  = batch["trg_kps"].to(device)
 
@@ -87,7 +89,7 @@ def train_one_epoch(model, loader, optimizer, device, epoch):
             entropy=f"{mean_ent:.3f}"
         )
 
-    n = len(loader)
+    n = len(loader) if not config.get("max_batches") else config["max_batches"]
     return running_loss / n, running_pck / n, running_ent / n
 
 
@@ -128,6 +130,8 @@ def parse_args():
     parser.add_argument("--lr",           type=float, default=1e-4)
     parser.add_argument("--epochs",       type=int, default=20)
     parser.add_argument("--num_workers",  type=int, default=4)
+    parser.add_argument("--max_batches",  type=int, default=None,
+                        help="Limita il numero di batch per epoch (utile per debug veloce)")
     parser.add_argument("--output_dir",   type=str, default="./checkpoints")
     parser.add_argument("--seed",         type=int, default=42)
     # --- Curriculum Learning ---
@@ -176,6 +180,7 @@ def main():
         "no_adaptive_win": args.no_adaptive_win,
         "aw_min_radius": args.aw_min_radius,
         "aw_max_radius": args.aw_max_radius,
+        "max_batches": args.max_batches,
     }
 
     # ---- Datasets & Loaders ----
@@ -244,7 +249,7 @@ def main():
             print(f"[Curriculum] Epoch {epoch}: using {active_frac*100:.1f}% of training pairs")
 
         train_loss, train_pck, mean_ent = train_one_epoch(
-            model, train_loader, optimizer, device, epoch
+            model, train_loader, optimizer, device, epoch, config
         )
         val_pck = validate(model, val_loader, device, alpha=0.1)
         scheduler.step()
