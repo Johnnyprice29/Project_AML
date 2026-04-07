@@ -108,7 +108,7 @@ def validate(model, loader, device, alpha=0.1):
         mask    = batch["kps_mask"].to(device)
 
         out = model(src_img, trg_img, src_kps=src_kps)
-        total_pck += pck(out["pred_kps"], trg_kps, img_size=config["img_size"], 
+        total_pck += pck(out["pred_kps"], trg_kps, img_size=src_img.shape[-1], 
                          alpha=alpha, mask=mask).item()
 
     return total_pck / len(loader)
