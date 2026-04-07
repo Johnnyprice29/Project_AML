@@ -22,6 +22,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import shutil
 
 from dataloaders.spair import SPairDataset, collate_spair
 from models.extractor import DINOv2Extractor
@@ -68,9 +69,12 @@ def train_one_epoch(model, loader, optimizer, device, epoch, config):
         kps_mask = batch["kps_mask"].to(device)  # (B, N)
 
         optimizer.zero_grad()
-        out = model(src_img, trg_img, src_kps=src_kps)
+        
+        # AMP Mixed Precision per raddoppiare la velocità
+        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type=='cuda'):
+            out = model(src_img, trg_img, src_kps=src_kps)
+            loss = correspondence_loss(out["pred_kps"], trg_kps, kps_mask)
 
-        loss = correspondence_loss(out["pred_kps"], trg_kps, kps_mask)
         loss.backward()
         
         # Gradient clipping (important for stable ViT training)
@@ -107,7 +111,9 @@ def validate(model, loader, device, alpha=0.1):
         trg_kps = batch["trg_kps"].to(device)
         mask    = batch["kps_mask"].to(device)
 
-        out = model(src_img, trg_img, src_kps=src_kps)
+        with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=device.type=='cuda'):
+            out = model(src_img, trg_img, src_kps=src_kps)
+            
         total_pck += pck(out["pred_kps"], trg_kps, img_size=src_img.shape[-1], 
                          alpha=alpha, mask=mask).item()
 
@@ -136,6 +142,8 @@ def parse_args():
     parser.add_argument("--max_batches",  type=int, default=None,
                         help="Limita il numero di batch per epoch (utile per debug veloce)")
     parser.add_argument("--output_dir",   type=str, default="./checkpoints")
+    parser.add_argument("--backup_dir",   type=str, default="",
+                        help="Cartella opzionale (es. su Drive) dove copiare il checkpoint.")
     parser.add_argument("--seed",         type=int, default=42)
     # --- Curriculum Learning ---
     parser.add_argument("--curriculum_epochs",   type=int,   default=10,
@@ -184,6 +192,7 @@ def main():
         "aw_min_radius": args.aw_min_radius,
         "aw_max_radius": args.aw_max_radius,
         "max_batches": args.max_batches,
+        "backup_dir": args.backup_dir,
     }
 
     # ---- Datasets & Loaders ----
@@ -277,6 +286,15 @@ def main():
                 "args": vars(args),
             }, ckpt_path)
             print(f"  ✓ Saved best checkpoint → {ckpt_path}  (PCK@0.1={val_pck:.4f})")
+            
+            # Backup opzionale su Google Drive
+            if config.get("backup_dir"):
+                try:
+                    os.makedirs(config["backup_dir"], exist_ok=True)
+                    shutil.copy(ckpt_path, os.path.join(config["backup_dir"], "best.pth"))
+                    print(f"  ✓ Backup copiato in → {config['backup_dir']}")
+                except Exception as e:
+                    print(f"  [Warning] Fallito il backup su Drive: {e}")
 
     print(f"\n[DONE] Best val PCK@0.1 = {best_pck:.4f}")
 
