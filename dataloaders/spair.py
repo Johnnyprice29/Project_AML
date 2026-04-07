@@ -1,16 +1,8 @@
 """
-data/dataset.py
+dataloaders/spair.py
 
 PyTorch Dataset for SPair-71k semantic correspondence.
-
-Each item returns:
-  - src_img:       (3, H, W) float tensor
-  - trg_img:       (3, H, W) float tensor
-  - src_kps:       (N, 2) keypoint coordinates in source image  [x, y]
-  - trg_kps:       (N, 2) keypoint coordinates in target image  [x, y]
-  - src_bbox:      (4,) bounding box [x1, y1, x2, y2]
-  - trg_bbox:      (4,) bounding box [x1, y1, x2, y2]
-  - category:      string category name
+Compatible with multiple directory structures (official and local mirrors).
 """
 
 import os
@@ -40,16 +32,7 @@ def get_default_transform(img_size: int = 224) -> Callable:
 
 class SPairDataset(Dataset):
     """
-    SPair-71k dataset loader.
-
-    Directory structure expected:
-        root/
-          ImageAnnotation/
-            <category>/
-              <pair_id>.json    # one JSON per image pair
-          JPEGImages/
-            <category>/
-              <image_id>.jpg
+    SPair-71k dataset loader. Handles multiple folder layouts.
     """
 
     SPLITS = ("trn", "val", "test")
@@ -68,43 +51,62 @@ class SPairDataset(Dataset):
         self.img_size = img_size
         self.transform = transform or get_default_transform(img_size)
 
-        # Collect annotation files
-        ann_dir = os.path.join(root, "ImageAnnotation")
-        if not os.path.isdir(ann_dir):
-            raise FileNotFoundError(f"[ERROR] Cartella annotazioni non trovata in {ann_dir}. "
-                                    f"Verifica il percorso --dataset_root.")
-            
-        all_jsons = sorted(glob.glob(os.path.join(ann_dir, "**", "*.json"), recursive=True))
-
-        # Filter by split file
+        # 1. Read split file (Layout/large/trn.txt)
         split_file = os.path.join(root, "Layout", "large", f"{split}.txt")
         if not os.path.isfile(split_file):
-             raise FileNotFoundError(f"[ERROR] File di split non trovato in {split_file}.")
+             # Try root split file if Layout/large is missing
+             split_file = os.path.join(root, "Layout", f"{split}.txt")
+             
+        if not os.path.isfile(split_file):
+             raise FileNotFoundError(f"[ERROR] Split file not found in {root}/Layout/...")
 
         with open(split_file, "r") as f:
-            # SPair-71k split lines look like "pair_id:category"
-            valid_ids = set(line.strip().split(":")[0] for line in f if line.strip())
+            lines = [l.strip() for l in f if l.strip()]
 
-        print(f"[DEBUG] Found {len(all_jsons)} JSONs total and {len(valid_ids)} valid IDs for split '{split}'.")
-        if len(all_jsons) > 0:
-            print(f"[DEBUG] Sample JSON path: {all_jsons[0]}")
-            print(f"[DEBUG] Sample JSON pair_id: {os.path.splitext(os.path.basename(all_jsons[0]))[0]}")
-        if len(valid_ids) > 0:
-            print(f"[DEBUG] Sample valid ID: {list(valid_ids)[0]}")
-
+        # 2. Collect files based on split lines
         self.samples = []
-        for jpath in all_jsons:
-            pair_id = os.path.splitext(os.path.basename(jpath))[0]
-            if pair_id not in valid_ids:
-                continue
-            cat = os.path.basename(os.path.dirname(jpath))
+        
+        # Possible annotation base directories
+        ann_bases = [
+            os.path.join(root, "PairAnnotation", split),  # Local mirror style (seen on C:)
+            os.path.join(root, "PairAnnotation"),         
+            os.path.join(root, "ImageAnnotation"),        # Official style
+        ]
+        
+        print(f"[INFO] Initializing {split} split. Scanning annotations...")
+        
+        for line in lines:
+            # line: "pair_id:category"
+            if ":" not in line: continue
+            pair_id, cat = line.split(":")
+            
             if categories and cat not in categories:
                 continue
-            self.samples.append(jpath)
-            
+                
+            # Try possible filenames
+            # a) "pair_id_category.json"  (Local mirror style)
+            # b) "pair_id.json"           (Official style)
+            found = False
+            for base in ann_bases:
+                if not os.path.isdir(base): continue
+                
+                # Check directly or in category subfolder
+                for sub in ["", cat]:
+                    p1 = os.path.join(base, sub, f"{pair_id}_{cat}.json")
+                    p2 = os.path.join(base, sub, f"{pair_id}.json")
+                    
+                    if os.path.isfile(p1):
+                        self.samples.append(p1); found = True; break
+                    if os.path.isfile(p2):
+                        self.samples.append(p2); found = True; break
+                if found: break
+                
         if len(self.samples) == 0:
-            raise ValueError(f"[ERROR] Nessun campione trovato per lo split '{split}' in {root}. "
-                             f"Nessun match fra i {len(all_jsons)} file JSON trovati e i {len(valid_ids)} ID validi.")
+            raise ValueError(f"[ERROR] No samples found for split '{split}' in {root}. "
+                             f"Checked bases: {ann_bases}. "
+                             f"Example missing: {lines[0]}")
+
+        print(f"[INFO] Loaded {len(self.samples)} samples for {split} split.")
 
     def __len__(self) -> int:
         return len(self.samples)
@@ -114,10 +116,8 @@ class SPairDataset(Dataset):
         with open(ann_path, "r") as f:
             ann = json.load(f)
 
-        category = ann["category"]
-        src_id = ann["src_imname"].replace(".jpg", "")
-        trg_id = ann["trg_imname"].replace(".jpg", "")
-
+        category = ann.get("category", os.path.basename(os.path.dirname(ann_path)))
+        
         # Load images
         src_img = self._load_image(category, ann["src_imname"])
         trg_img = self._load_image(category, ann["trg_imname"])
@@ -150,5 +150,9 @@ class SPairDataset(Dataset):
         }
 
     def _load_image(self, category: str, imname: str) -> Image.Image:
+        # Check in JPEGImages/<cat>/<imname>
         img_path = os.path.join(self.root, "JPEGImages", category, imname)
+        if not os.path.exists(img_path):
+            # Try global JPEGImages folder
+            img_path = os.path.join(self.root, "JPEGImages", imname)
         return Image.open(img_path).convert("RGB")
