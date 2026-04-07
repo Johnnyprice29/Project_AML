@@ -274,9 +274,16 @@ def main():
         val_pck = validate(model, val_loader, device, alpha=0.1)
         scheduler.step()
 
-        print(f"Epoch {epoch:03d}  "
-              f"loss={train_loss:.4f}  train_pck@0.1={train_pck:.4f}  "
-              f"val_pck@0.1={val_pck:.4f}  entropy={mean_ent:.3f}")
+        log_str = (f"Epoch {epoch:03d}  "
+                   f"loss={train_loss:.4f}  train_pck@0.1={train_pck:.4f}  "
+                   f"val_pck@0.1={val_pck:.4f}  entropy={mean_ent:.3f}")
+        print(log_str)
+        
+        # Scrive il log in tempo reale su Google Drive
+        if config.get("backup_dir"):
+            os.makedirs(config["backup_dir"], exist_ok=True)
+            with open(os.path.join(config["backup_dir"], "training_log.txt"), "a", encoding="utf-8") as f:
+                f.write(log_str + "\n")
 
         if val_pck > best_pck:
             best_pck = val_pck
