@@ -86,7 +86,6 @@ class DINOv2Extractor(nn.Module):
     # Forward
     # ------------------------------------------------------------------
 
-    @torch.no_grad()
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -104,10 +103,20 @@ class DINOv2Extractor(nn.Module):
         )
         h, w = H // self.patch_size, W // self.patch_size
 
+        # Resolve negative layer index
+        actual_layer = self.layer_idx
+        if actual_layer < 0:
+            # PEFT wraps the backbone, so blocks might be inside base_model.model
+            if hasattr(self.model, "blocks"):
+                n_blocks = len(self.model.blocks)
+            else:
+                n_blocks = len(self.model.base_model.model.blocks)
+            actual_layer += n_blocks
+
         # get_intermediate_layers returns a list of (B, N+1, D) tensors
         # N = h*w patch tokens, +1 for [CLS]
         out = self.model.get_intermediate_layers(
-            x, n=[self.layer_idx], reshape=False
+            x, n=[actual_layer], reshape=False
         )  # list of length 1
         feats = out[0]          # (B, N+1, D)
         feats = feats[:, 1:]    # remove [CLS] → (B, N, D)
