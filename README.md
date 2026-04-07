@@ -86,7 +86,7 @@ pip install git+https://github.com/facebookresearch/segment-anything.git
 
 - **18** object categories, **70,958** annotated image pairs
 - Metadata per pair: viewpoint variation (`vpvar`), scale variation (`scvar`), truncation (`trncvar`) — used by the Curriculum sampler
-- Download: `python data/download_spair.py --root ./datasets`
+- Download: `python dataloaders/download_spair.py --root ./datasets`
 
 ---
 

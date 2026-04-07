@@ -79,11 +79,12 @@ class SPairDataset(Dataset):
         # Filter by split file
         split_file = os.path.join(root, "Layout", "large", f"{split}.txt")
         if not os.path.isfile(split_file):
-             raise FileNotFoundError(f"[ERROR] File di split non trovato in {split_file}. "
-                                     f"Assicurati che SPair-71k sia estratto correttamente.")
+             raise FileNotFoundError(f"[ERROR] File di split non trovato in {split_file}.")
 
         with open(split_file, "r") as f:
             valid_ids = set(line.strip() for line in f if line.strip())
+
+        print(f"[DEBUG] Found {len(all_jsons)} JSONs total and {len(valid_ids)} valid IDs for split '{split}'.")
 
         self.samples = []
         for jpath in all_jsons:
@@ -97,7 +98,7 @@ class SPairDataset(Dataset):
             
         if len(self.samples) == 0:
             raise ValueError(f"[ERROR] Nessun campione trovato per lo split '{split}' in {root}. "
-                             f"Controlla i file JSON in ImageAnnotation.")
+                             f"JSONs trovati: {len(all_jsons)}, IDs validi: {len(valid_ids)}")
 
     def __len__(self) -> int:
         return len(self.samples)

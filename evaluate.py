@@ -49,6 +49,13 @@ def main():
         model_name=saved_args.get("backbone", "dinov2_vitb14"),
         freeze=True,
     )
+    # Applica LoRA con gli stessi parametri del training (default rank=16)
+    backbone.model = apply_lora_to_dinov2(
+        backbone.model, 
+        rank=saved_args.get("lora_rank", 16),
+        lora_alpha=saved_args.get("lora_alpha", 32)
+    )
+
     model = SemanticCorrespondenceModel(
         backbone=backbone,
         proj_dim=saved_args.get("proj_dim", 256),
