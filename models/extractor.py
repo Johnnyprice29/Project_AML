@@ -113,13 +113,11 @@ class DINOv2Extractor(nn.Module):
                 n_blocks = len(self.model.base_model.model.blocks)
             actual_layer += n_blocks
 
-        # get_intermediate_layers returns a list of (B, N+1, D) tensors
-        # N = h*w patch tokens, +1 for [CLS]
+        # get_intermediate_layers(return_class_token=False) returns only patch tokens
         out = self.model.get_intermediate_layers(
             x, n=[actual_layer], reshape=False
         )  # list of length 1
-        feats = out[0]          # (B, N+1, D)
-        feats = feats[:, 1:]    # remove [CLS] → (B, N, D)
+        feats = out[0]          # (B, N, D)  where N = h*w = 256
         feats = feats.permute(0, 2, 1)          # (B, D, N)
         feats = feats.reshape(B, self._feat_dim, h, w)  # (B, D, h, w)
         return feats
