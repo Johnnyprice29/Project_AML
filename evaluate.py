@@ -17,7 +17,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
 
-from dataloaders.spair import SPairDataset
+from dataloaders.spair import SPairDataset, collate_spair
 from models.extractor import DINOv2Extractor
 from models.lora import apply_lora_to_dinov2
 from models.correspondence import SemanticCorrespondenceModel
@@ -69,9 +69,9 @@ def main():
     # ---- Dataset ----
     test_ds     = SPairDataset(args.dataset_root, split="test", img_size=args.img_size)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size,
-                             shuffle=False, num_workers=args.num_workers)
+                             shuffle=False, num_workers=args.num_workers,
+                             collate_fn=collate_spair)
     print(f"[INFO] Test set: {len(test_ds)} pairs")
-
     # ---- Evaluation ----
     all_pred, all_gt, all_cats = [], [], []
 
@@ -80,13 +80,16 @@ def main():
         trg_img = batch["trg_img"].to(device)
         src_kps = batch["src_kps"].to(device)
         trg_kps = batch["trg_kps"].to(device)
+        mask    = batch["kps_mask"].to(device)
 
         out = model(src_img, trg_img, src_kps=src_kps)
         pred_kps = out["pred_kps"]   # (B, N, 2)
 
         for b in range(len(src_img)):
-            all_pred.append(pred_kps[b].cpu())
-            all_gt.append(trg_kps[b].cpu())
+            # Solo i keypoint validi per questo sample del batch
+            n_valid = int(mask[b].sum().item())
+            all_pred.append(pred_kps[b, :n_valid].cpu())
+            all_gt.append(trg_kps[b, :n_valid].cpu())
             all_cats.append(batch["category"][b])
 
     # ---- Metrics ----

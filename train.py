@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from dataloaders.spair import SPairDataset
+from dataloaders.spair import SPairDataset, collate_spair
 from models.extractor import DINOv2Extractor
 from models.lora import apply_lora_to_dinov2
 from models.correspondence import SemanticCorrespondenceModel
@@ -38,12 +38,13 @@ from utils.curriculum import CurriculumSampler
 def correspondence_loss(
     pred_kps: torch.Tensor,   # (B, N, 2)
     gt_kps:   torch.Tensor,   # (B, N, 2)
+    mask:     torch.Tensor,   # (B, N) boolean mask
 ) -> torch.Tensor:
     """
-    Simple L2 regression loss on keypoint coordinates.
-    TODO: replace / augment with a contrastive or cyclic consistency loss.
+    MSE loss on keypoint coordinates, computed only on valid (non-padded) keypoints.
     """
-    return F.mse_loss(pred_kps, gt_kps)
+    mse = F.mse_loss(pred_kps, gt_kps, reduction='none').mean(dim=-1) # (B, N)
+    return mse[mask].mean()
 
 
 # ---------------------------------------------------------------------------
@@ -62,22 +63,23 @@ def train_one_epoch(model, loader, optimizer, device, epoch, config):
             break
             
         src_img, trg_img = batch["src_img"].to(device), batch["trg_img"].to(device)
-        src_kps  = batch["src_kps"].to(device)   # (B, N, 2)
+        src_kps  = batch["src_kps"].to(device)   # (B, N, 2) padded
         trg_kps  = batch["trg_kps"].to(device)
+        kps_mask = batch["kps_mask"].to(device)  # (B, N)
 
         optimizer.zero_grad()
         out = model(src_img, trg_img, src_kps=src_kps)
 
-        loss = correspondence_loss(out["pred_kps"], trg_kps)
+        loss = correspondence_loss(out["pred_kps"], trg_kps, kps_mask)
         loss.backward()
         
-        # Gradient clipping (important for stable ViT training, from Lab 6)
+        # Gradient clipping (important for stable ViT training)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         
         optimizer.step()
 
         pck_score = pck(out["pred_kps"].detach(), trg_kps,
-                        img_size=src_img.shape[-1], alpha=0.1)
+                        img_size=src_img.shape[-1], alpha=0.1, mask=kps_mask)
         mean_ent  = out.get("entropies", torch.zeros(1)).mean().item()
 
         running_loss += loss.item()
@@ -103,10 +105,11 @@ def validate(model, loader, device, alpha=0.1):
         trg_img = batch["trg_img"].to(device)
         src_kps = batch["src_kps"].to(device)
         trg_kps = batch["trg_kps"].to(device)
+        mask    = batch["kps_mask"].to(device)
 
         out = model(src_img, trg_img, src_kps=src_kps)
-        total_pck += pck(out["pred_kps"], trg_kps,
-                         img_size=src_img.shape[-1], alpha=alpha).item()
+        total_pck += pck(out["pred_kps"], trg_kps, img_size=config["img_size"], 
+                         alpha=alpha, mask=mask).item()
 
     return total_pck / len(loader)
 
@@ -202,15 +205,20 @@ def main():
             drop_last=True,
             seed=args.seed,
         )
-        train_loader = DataLoader(train_ds, batch_sampler=curriculum_sampler,
-                                  num_workers=config["num_workers"], pin_memory=True)
+        train_loader = DataLoader(
+            train_ds, batch_sampler=curriculum_sampler, 
+            num_workers=config["num_workers"], collate_fn=collate_spair
+        )
     else:
         train_loader = DataLoader(train_ds, batch_size=config["batch_size"],
-                                  shuffle=True, num_workers=config["num_workers"], pin_memory=True)
+                                  shuffle=True, num_workers=config["num_workers"], 
+                                  collate_fn=collate_spair, pin_memory=True)
         curriculum_sampler = None
 
-    val_loader = DataLoader(val_ds, batch_size=config["batch_size"],
-                            shuffle=False, num_workers=config["num_workers"], pin_memory=True)
+    val_loader = DataLoader(
+        val_ds, batch_size=config["batch_size"], shuffle=False, 
+        num_workers=config["num_workers"], collate_fn=collate_spair, pin_memory=True
+    )
 
     print(f"[INFO] Train: {len(train_ds)} pairs | Val: {len(val_ds)} pairs")
 

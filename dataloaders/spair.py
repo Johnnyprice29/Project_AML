@@ -160,3 +160,39 @@ class SPairDataset(Dataset):
             # Try global JPEGImages folder
             img_path = os.path.join(self.root, "JPEGImages", imname)
         return Image.open(img_path).convert("RGB")
+
+
+def collate_spair(batch: List[dict]) -> dict:
+    """
+    Custom collate function to handle variable number of keypoints per image.
+    Pads keypoints with -1.0 and returns a boolean mask.
+    """
+    src_imgs = torch.stack([item["src_img"] for item in batch])
+    trg_imgs = torch.stack([item["trg_img"] for item in batch])
+    categories = [item["category"] for item in batch]
+    pair_ids = [item["pair_id"] for item in batch]
+
+    # Find max number of keypoints in this batch
+    max_kps = max([item["src_kps"].shape[0] for item in batch])
+    B = len(batch)
+
+    # Prepare padded tensors
+    padded_src_kps = torch.full((B, max_kps, 2), -1.0)
+    padded_trg_kps = torch.full((B, max_kps, 2), -1.0)
+    kps_mask = torch.zeros((B, max_kps), dtype=torch.bool)
+
+    for i, item in enumerate(batch):
+        n = item["src_kps"].shape[0]
+        padded_src_kps[i, :n] = item["src_kps"]
+        padded_trg_kps[i, :n] = item["trg_kps"]
+        kps_mask[i, :n] = True
+
+    return {
+        "src_img": src_imgs,
+        "trg_img": trg_imgs,
+        "src_kps": padded_src_kps,
+        "trg_kps": padded_trg_kps,
+        "kps_mask": kps_mask,
+        "category": categories,
+        "pair_id": pair_ids,
+    }

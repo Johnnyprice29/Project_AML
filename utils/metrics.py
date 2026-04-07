@@ -14,33 +14,25 @@ def pck(
     gt_kps: torch.Tensor,
     img_size: Union[int, tuple] = 224,
     alpha: float = 0.1,
+    mask: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     """
     Percentage of Correct Keypoints (PCK) @ alpha.
-
-    A predicted keypoint is "correct" if its Euclidean distance to the
-    ground-truth is ≤ α × max(H, W).
-
-    Args:
-        pred_kps:  (B, N, 2)   predicted [x, y] pixel coordinates.
-        gt_kps:    (B, N, 2)   ground-truth [x, y] pixel coordinates.
-        img_size:  int or (H, W) — reference image size.
-        alpha:     threshold radius as a fraction of max(H, W).
-
-    Returns:
-        pck_score: scalar tensor, mean over all valid keypoints in the batch.
     """
     if isinstance(img_size, int):
         H = W = img_size
     else:
         H, W = img_size
 
-    threshold = alpha * max(H, W)
-
-    # Euclidean distance between predicted and GT keypoints
+    # Euclidean distance
     dist = torch.norm(pred_kps - gt_kps, dim=-1)  # (B, N)
+    threshold = alpha * float(max(H, W))
+    correct = (dist <= threshold).float()
 
-    correct = (dist <= threshold).float()          # (B, N)
+    if mask is not None:
+        # Only compute mean over valid keypoints
+        return correct[mask].mean()
+    
     return correct.mean()
 
 
