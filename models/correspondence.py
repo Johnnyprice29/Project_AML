@@ -2,15 +2,24 @@
 models/correspondence.py
 
 Full semantic correspondence model:
-    DINOv2 (optionally with LoRA)  →  dense feature maps  →  nearest-neighbour matching
+    DINOv2 (+ LoRA)  →  dense features  →  [SAM masking]  →  Adaptive Window Soft-Argmax
+
+New features vs. baseline:
+  • Segment-Aware Correspondence: object masks from SAM filter the cost volume
+    so matches are constrained inside the target object.
+  • Adaptive Window Soft-Argmax: window radius dynamically adapts to heatmap
+    entropy for sub-pixel precision without being over-confident on hard pairs.
 """
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from models.extractor import DINOv2Extractor
+from utils.adaptive_window import batched_adaptive_softargmax
+from utils.segment_aware import apply_masks_to_cost_volume
 
 
 class SemanticCorrespondenceModel(nn.Module):
@@ -21,14 +30,17 @@ class SemanticCorrespondenceModel(nn.Module):
         1. Extract dense DINOv2 features for source & target images.
         2. (Optional) Apply a lightweight projection head.
         3. Compute cosine-similarity cost volume.
-        4. Return predicted target coordinates for each source keypoint.
+        4. [Optional] Apply SAM segment masks to cost volume  (Segment-Aware).
+        5. Adaptive Window Soft-Argmax per keypoint             (Adaptive Windowing).
 
     Args:
-        backbone:       DINOv2Extractor instance.
-        proj_dim:       Output dimension of the projection head.
-                        Set to None to skip projection.
-        temperature:    Softmax temperature for the cost volume.
-                        Lower → sharper/more confident matching.
+        backbone:          DINOv2Extractor instance.
+        proj_dim:          Output dim of projection head. None to skip.
+        temperature:       Softmax temperature for the cost volume.
+        use_adaptive_win:  If True, use entropy-based adaptive soft-argmax.
+                           If False, fall back to plain argmax (faster).
+        aw_min_radius:     Minimum window half-size (feature cells).
+        aw_max_radius:     Maximum window half-size (feature cells).
     """
 
     def __init__(
@@ -36,11 +48,17 @@ class SemanticCorrespondenceModel(nn.Module):
         backbone: DINOv2Extractor,
         proj_dim: Optional[int] = 256,
         temperature: float = 0.05,
+        use_adaptive_win: bool = True,
+        aw_min_radius: int = 2,
+        aw_max_radius: int = 7,
     ):
         super().__init__()
-        self.backbone    = backbone
-        self.temperature = temperature
-        feat_dim         = backbone.feat_dim
+        self.backbone         = backbone
+        self.temperature      = temperature
+        self.use_adaptive_win = use_adaptive_win
+        self.aw_min_radius    = aw_min_radius
+        self.aw_max_radius    = aw_max_radius
+        feat_dim              = backbone.feat_dim
 
         # Optional projection head (shared weights for src & trg)
         if proj_dim is not None:
@@ -78,26 +96,35 @@ class SemanticCorrespondenceModel(nn.Module):
         src_img: torch.Tensor,
         trg_img: torch.Tensor,
         src_kps: Optional[torch.Tensor] = None,
+        trg_masks: Optional[List[Optional[np.ndarray]]] = None,
     ) -> dict:
         """
         Args:
-            src_img:  (B, 3, H, W)
-            trg_img:  (B, 3, H, W)
-            src_kps:  (B, N, 2)  keypoint pixel coordinates in source image [x, y]
-                      If None, returns the full cost volume only.
+            src_img:   (B, 3, H, W)
+            trg_img:   (B, 3, H, W)
+            src_kps:   (B, N, 2) keypoint pixel coordinates in source [x, y].
+                       If None, returns cost volume only (no keypoint prediction).
+            trg_masks: List[Optional[ndarray(H,W)]] of length B — SAM binary
+                       masks for the target object. None entries are skipped.
+                       When provided, activates Segment-Aware Correspondence.
 
         Returns:
-            dict with keys:
-              'cost_volume':   (B, h*w, h*w) — raw similarity matrix
-              'pred_kps':      (B, N, 2) — predicted target keypoints  [optional]
-              'feat_grid_hw':  (h, w) — feature grid size
+            dict with:
+              'cost_volume':   (B, Ns, Nt) — similarity matrix (after masking if used)
+              'pred_kps':      (B, N, 2)   — predicted target keypoints in pixel space
+              'entropies':     (B, N)      — per-keypoint heatmap entropy (for logging)
+              'feat_grid_hw':  (h, w)
         """
         src_feats, (h, w) = self.extract_features(src_img)   # (B, Ns, C)
         trg_feats, _      = self.extract_features(trg_img)   # (B, Nt, C)
 
-        # Cosine similarity cost volume: (B, Ns, Nt)
-        cost_volume = torch.bmm(src_feats, trg_feats.transpose(1, 2))  # (B, N, N)
+        # --- Cosine similarity cost volume ---
+        cost_volume = torch.bmm(src_feats, trg_feats.transpose(1, 2))  # (B, Ns, Nt)
         cost_volume = cost_volume / self.temperature
+
+        # --- Segment-Aware: mask out-of-object target positions ---
+        if trg_masks is not None:
+            cost_volume = apply_masks_to_cost_volume(cost_volume, trg_masks, h, w)
 
         output = {
             "cost_volume":  cost_volume,
@@ -105,8 +132,11 @@ class SemanticCorrespondenceModel(nn.Module):
         }
 
         if src_kps is not None:
-            pred_kps = self._match_keypoints(cost_volume, src_kps, h, w, src_img)
-            output["pred_kps"] = pred_kps
+            pred_kps, entropies = self._match_keypoints(
+                cost_volume, src_kps, h, w, src_img
+            )
+            output["pred_kps"]  = pred_kps
+            output["entropies"] = entropies
 
         return output
 
@@ -121,38 +151,51 @@ class SemanticCorrespondenceModel(nn.Module):
         h: int,
         w: int,
         src_img: torch.Tensor,       # (B, 3, H, W) — to get img size
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        For each source keypoint, find the best-matching target grid cell
-        and convert back to pixel coordinates.
+        For each source keypoint, find the best-matching target position and
+        convert back to pixel coordinates.
+
+        If use_adaptive_win=True:  Adaptive Window Soft-Argmax (sub-pixel).
+        If use_adaptive_win=False: Plain hard-argmax (faster, coarser).
 
         Returns:
-            pred_kps: (B, N_kp, 2) in pixel coords.
+            pred_kps:  (B, N_kp, 2) in pixel coords.
+            entropies: (B, N_kp) heatmap entropy per keypoint.
         """
         B, N_kp, _ = src_kps.shape
-        _, H, W = src_img.shape[1:]
+        _, H, W    = src_img.shape[1:]
 
-        # Convert keypoint pixel coords → feature grid indices
-        # grid_x ∈ [0, w-1],  grid_y ∈ [0, h-1]
+        # Convert source keypoints → flat feature-grid indices
         kp_grid_x = (src_kps[..., 0] / W * w).long().clamp(0, w - 1)  # (B, N_kp)
         kp_grid_y = (src_kps[..., 1] / H * h).long().clamp(0, h - 1)
-        kp_idx    = kp_grid_y * w + kp_grid_x                          # (B, N_kp) flat index
+        kp_idx    = kp_grid_y * w + kp_grid_x                          # (B, N_kp)
 
-        # Gather rows of cost_volume corresponding to source keypoints
-        # kp_idx: (B, N_kp) → expand to (B, N_kp, Nt_grid)
+        # Gather similarity rows: (B, N_kp, Nt_grid)
         kp_idx_exp    = kp_idx.unsqueeze(-1).expand(-1, -1, h * w)
-        kp_similarity = cost_volume.gather(1, kp_idx_exp)              # (B, N_kp, Nt_grid)
+        kp_similarity = cost_volume.gather(1, kp_idx_exp)              # (B, N_kp, h*w)
 
-        # Argmax → best matching target grid cell
-        best_trg_idx = kp_similarity.argmax(dim=-1)                    # (B, N_kp)
+        if self.use_adaptive_win:
+            # --- Adaptive Window Soft-Argmax (sub-pixel) ---
+            # Returns coords in feature-grid space
+            grid_coords, entropies = batched_adaptive_softargmax(
+                kp_similarity, h, w,
+                min_radius=self.aw_min_radius,
+                max_radius=self.aw_max_radius,
+            )   # grid_coords: (B, N_kp, 2) [x,y] in grid space
 
-        # Convert flat index → (grid_x, grid_y) → pixel coords
-        trg_grid_y = best_trg_idx // w                                 # (B, N_kp)
-        trg_grid_x = best_trg_idx % w
+            # Scale from grid space → pixel space
+            pred_x = (grid_coords[..., 0] + 0.5) / w * W
+            pred_y = (grid_coords[..., 1] + 0.5) / h * H
 
-        # Map back to image pixel space (centre of the patch)
-        pred_x = (trg_grid_x.float() + 0.5) / w * W
-        pred_y = (trg_grid_y.float() + 0.5) / h * H
+        else:
+            # --- Plain hard-argmax (baseline fallback) ---
+            best_trg_idx = kp_similarity.argmax(dim=-1)   # (B, N_kp)
+            trg_grid_y   = best_trg_idx // w
+            trg_grid_x   = best_trg_idx % w
+            pred_x = (trg_grid_x.float() + 0.5) / w * W
+            pred_y = (trg_grid_y.float() + 0.5) / h * H
+            entropies = torch.zeros(B, N_kp, device=src_kps.device)
 
-        pred_kps = torch.stack([pred_x, pred_y], dim=-1)               # (B, N_kp, 2)
-        return pred_kps
+        pred_kps = torch.stack([pred_x, pred_y], dim=-1)   # (B, N_kp, 2)
+        return pred_kps, entropies

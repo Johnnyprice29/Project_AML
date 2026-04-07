@@ -17,8 +17,9 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
 
-from data.dataset import SPairDataset
+from dataloaders.spair import SPairDataset
 from models.extractor import DINOv2Extractor
+from models.lora import apply_lora_to_dinov2
 from models.correspondence import SemanticCorrespondenceModel
 from utils.metrics import pck, pck_per_category
 

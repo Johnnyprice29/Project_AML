@@ -1,0 +1,30 @@
+# ── Dataset (never push to GitHub!) ──────────────────
+data/
+*.tar.gz
+*.zip
+
+# ── Model checkpoints ────────────────────────────────
+checkpoints/
+*.pth
+
+# ── Docs interni (non rilevanti per il repo) ─────────
+aml_project_proposals.md
+CHANGES.md
+SPIEGAZIONE_IMPLEMENTAZIONE.md
+
+# ── Python cache ─────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ── Jupyter ──────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── OS files ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Wandb / MLflow ───────────────────────────────────
+wandb/
+mlruns/

@@ -23,11 +23,12 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data.dataset import SPairDataset
+from dataloaders.spair import SPairDataset
 from models.extractor import DINOv2Extractor
 from models.lora import apply_lora_to_dinov2
 from models.correspondence import SemanticCorrespondenceModel
 from utils.metrics import pck
+from utils.curriculum import CurriculumSampler
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +54,7 @@ def train_one_epoch(model, loader, optimizer, device, epoch):
     model.train()
     running_loss = 0.0
     running_pck  = 0.0
+    running_ent  = 0.0
 
     pbar = tqdm(loader, desc=f"Epoch {epoch}", unit="batch")
     for batch in pbar:
@@ -66,17 +68,27 @@ def train_one_epoch(model, loader, optimizer, device, epoch):
 
         loss = correspondence_loss(out["pred_kps"], trg_kps)
         loss.backward()
+        
+        # Gradient clipping (important for stable ViT training, from Lab 6)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
         optimizer.step()
 
         pck_score = pck(out["pred_kps"].detach(), trg_kps,
                         img_size=src_img.shape[-1], alpha=0.1)
+        mean_ent  = out.get("entropies", torch.zeros(1)).mean().item()
 
         running_loss += loss.item()
         running_pck  += pck_score.item()
-        pbar.set_postfix(loss=f"{loss.item():.4f}", pck=f"{pck_score.item():.4f}")
+        running_ent  += mean_ent
+        pbar.set_postfix(
+            loss=f"{loss.item():.4f}",
+            pck=f"{pck_score.item():.4f}",
+            entropy=f"{mean_ent:.3f}"
+        )
 
     n = len(loader)
-    return running_loss / n, running_pck / n
+    return running_loss / n, running_pck / n, running_ent / n
 
 
 @torch.no_grad()
@@ -118,6 +130,16 @@ def parse_args():
     parser.add_argument("--num_workers",  type=int, default=4)
     parser.add_argument("--output_dir",   type=str, default="./checkpoints")
     parser.add_argument("--seed",         type=int, default=42)
+    # --- Curriculum Learning ---
+    parser.add_argument("--curriculum_epochs",   type=int,   default=10,
+                        help="Epochs for the difficulty ramp-up phase (0 = no curriculum)")
+    parser.add_argument("--curriculum_start_frac", type=float, default=0.3,
+                        help="Fraction of easiest pairs used at epoch 1")
+    # --- Model options ---
+    parser.add_argument("--no_adaptive_win", action="store_true",
+                        help="Disable Adaptive Window Soft-Argmax (use hard argmax)")
+    parser.add_argument("--aw_min_radius",   type=int, default=2)
+    parser.add_argument("--aw_max_radius",   type=int, default=7)
     return parser.parse_args()
 
 
@@ -136,13 +158,54 @@ def main():
     print(f"[INFO] Using device: {device}")
     os.makedirs(args.output_dir, exist_ok=True)
 
+    # ---- Config (from Lab 3 style) ----
+    config = {
+        "dataset_root": args.dataset_root,
+        "backbone": args.backbone,
+        "img_size": args.img_size,
+        "lora_rank": args.lora_rank,
+        "lora_alpha": args.lora_alpha,
+        "proj_dim": args.proj_dim,
+        "temperature": args.temperature,
+        "batch_size": args.batch_size,
+        "lr": args.lr,
+        "epochs": args.epochs,
+        "num_workers": args.num_workers,
+        "curriculum_epochs": args.curriculum_epochs,
+        "curriculum_start_frac": args.curriculum_start_frac,
+        "no_adaptive_win": args.no_adaptive_win,
+        "aw_min_radius": args.aw_min_radius,
+        "aw_max_radius": args.aw_max_radius,
+    }
+
     # ---- Datasets & Loaders ----
-    train_ds = SPairDataset(args.dataset_root, split="trn", img_size=args.img_size)
-    val_ds   = SPairDataset(args.dataset_root, split="val", img_size=args.img_size)
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size,
-                              shuffle=True,  num_workers=args.num_workers, pin_memory=True)
-    val_loader   = DataLoader(val_ds,   batch_size=args.batch_size,
-                              shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    train_ds = SPairDataset(config["dataset_root"], split="trn", img_size=config["img_size"])
+    val_ds   = SPairDataset(config["dataset_root"], split="val", img_size=config["img_size"])
+
+    # Curriculum sampler: progressively expose harder pairs
+    use_curriculum = config["curriculum_epochs"] > 0
+    if use_curriculum:
+        print(f"[Curriculum] Enabled: ramp over {config['curriculum_epochs']} epochs, "
+              f"starting from {config['curriculum_start_frac']*100:.0f}% easiest pairs.")
+        curriculum_sampler = CurriculumSampler(
+            dataset=train_ds,
+            batch_size=config["batch_size"],
+            total_epochs=config["epochs"],
+            curriculum_epochs=config["curriculum_epochs"],
+            start_fraction=config["curriculum_start_frac"],
+            end_fraction=1.0,
+            drop_last=True,
+            seed=args.seed,
+        )
+        train_loader = DataLoader(train_ds, batch_sampler=curriculum_sampler,
+                                  num_workers=config["num_workers"], pin_memory=True)
+    else:
+        train_loader = DataLoader(train_ds, batch_size=config["batch_size"],
+                                  shuffle=True, num_workers=config["num_workers"], pin_memory=True)
+        curriculum_sampler = None
+
+    val_loader = DataLoader(val_ds, batch_size=config["batch_size"],
+                            shuffle=False, num_workers=config["num_workers"], pin_memory=True)
 
     print(f"[INFO] Train: {len(train_ds)} pairs | Val: {len(val_ds)} pairs")
 
@@ -157,6 +220,9 @@ def main():
         backbone=backbone,
         proj_dim=args.proj_dim,
         temperature=args.temperature,
+        use_adaptive_win=not args.no_adaptive_win,
+        aw_min_radius=args.aw_min_radius,
+        aw_max_radius=args.aw_max_radius,
     ).to(device)
 
     # Only train LoRA params + projection head
@@ -171,13 +237,21 @@ def main():
     # ---- Training ----
     best_pck = 0.0
     for epoch in range(1, args.epochs + 1):
-        train_loss, train_pck = train_one_epoch(model, train_loader, optimizer, device, epoch)
-        val_pck               = validate(model, val_loader, device, alpha=0.1)
+        # Advance curriculum sampler
+        if curriculum_sampler is not None:
+            curriculum_sampler.set_epoch(epoch)
+            active_frac = curriculum_sampler._active_fraction()
+            print(f"[Curriculum] Epoch {epoch}: using {active_frac*100:.1f}% of training pairs")
+
+        train_loss, train_pck, mean_ent = train_one_epoch(
+            model, train_loader, optimizer, device, epoch
+        )
+        val_pck = validate(model, val_loader, device, alpha=0.1)
         scheduler.step()
 
         print(f"Epoch {epoch:03d}  "
               f"loss={train_loss:.4f}  train_pck@0.1={train_pck:.4f}  "
-              f"val_pck@0.1={val_pck:.4f}")
+              f"val_pck@0.1={val_pck:.4f}  entropy={mean_ent:.3f}")
 
         if val_pck > best_pck:
             best_pck = val_pck
