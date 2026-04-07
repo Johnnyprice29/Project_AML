@@ -84,19 +84,23 @@ class SPairDataset(Dataset):
                 continue
                 
             # Try possible filenames
-            # a) "pair_id_category.json"  (Local mirror style)
-            # b) "pair_id.json"           (Official style)
+            # a) "pair_id:cat.json" (Linux / Official style)
+            # b) "pair_id_cat.json" (Windows mirror style)
+            # c) "pair_id.json"      (Other mirrors)
             found = False
             for base in ann_bases:
                 if not os.path.isdir(base): continue
                 
                 # Check directly or in category subfolder
                 for sub in ["", cat]:
-                    p1 = os.path.join(base, sub, f"{pair_id}_{cat}.json")
+                    p1 = os.path.join(base, sub, f"{pair_id}:{cat}.json")
+                    p1b = os.path.join(base, sub, f"{pair_id}_{cat}.json")
                     p2 = os.path.join(base, sub, f"{pair_id}.json")
                     
                     if os.path.isfile(p1):
                         self.samples.append(p1); found = True; break
+                    if os.path.isfile(p1b):
+                        self.samples.append(p1b); found = True; break
                     if os.path.isfile(p2):
                         self.samples.append(p2); found = True; break
                 if found: break
