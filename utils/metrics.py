@@ -6,7 +6,7 @@ Evaluation metrics for semantic correspondence.
 
 import torch
 import numpy as np
-from typing import Union
+from typing import Union, Optional, List, Dict
 
 
 def pck(
