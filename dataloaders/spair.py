@@ -82,7 +82,8 @@ class SPairDataset(Dataset):
              raise FileNotFoundError(f"[ERROR] File di split non trovato in {split_file}.")
 
         with open(split_file, "r") as f:
-            valid_ids = set(line.strip() for line in f if line.strip())
+            # SPair-71k split lines look like "pair_id:category"
+            valid_ids = set(line.strip().split(":")[0] for line in f if line.strip())
 
         print(f"[DEBUG] Found {len(all_jsons)} JSONs total and {len(valid_ids)} valid IDs for split '{split}'.")
         if len(all_jsons) > 0:
