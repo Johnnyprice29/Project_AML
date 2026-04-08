@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--batch_size",   type=int, default=16)
     parser.add_argument("--num_workers",  type=int, default=4)
     parser.add_argument("--no_adaptive_win", action="store_true", help="Disable adaptive window")
+    parser.add_argument("--results_file", type=str, default="", help="Path to save text results")
     return parser.parse_args()
 
 
@@ -110,20 +111,38 @@ def main():
             all_cats.append(batch["category"][b])
 
     # ---- Metrics ----
+    final_output = []
+    ckpt_name = os.path.basename(args.checkpoint) if args.checkpoint else "Baseline"
+    final_output.append(f"--- Evaluation Results: {ckpt_name} ---")
+
     for alpha in [0.1, 0.05]:
         scores = [
             pck(p.unsqueeze(0), g.unsqueeze(0), img_size=args.img_size, alpha=alpha).item()
             for p, g in zip(all_pred, all_gt)
         ]
         mean_pck = np.mean(scores)
-        print(f"\nPCK @ {alpha:.2f} = {mean_pck * 100:.2f}%")
+        line = f"PCK @ {alpha:.2f} = {mean_pck * 100:.2f}%"
+        print(f"\n{line}")
+        final_output.append(line)
 
     per_cat = pck_per_category(all_pred, all_gt, all_cats,
                                img_size=args.img_size, alpha=args.alpha)
     print(f"\nPer-category PCK @ {args.alpha}:")
+    final_output.append(f"\nPer-category PCK @ {args.alpha}:")
     for cat, score in sorted(per_cat.items()):
-        print(f"  {cat:<20s}  {score * 100:.2f}%")
-    print(f"\n  Mean: {np.mean(list(per_cat.values())) * 100:.2f}%")
+        line = f"  {cat:<20s}  {score * 100:.2f}%"
+        print(line)
+        final_output.append(line)
+    
+    mean_val = f"\n  Mean: {np.mean(list(per_cat.values())) * 100:.2f}%"
+    print(mean_val)
+    final_output.append(mean_val)
+
+    if args.results_file:
+        os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
+        with open(args.results_file, "w") as f:
+            f.write("\n".join(final_output))
+        print(f"\n[INFO] Results saved to {args.results_file}")
 
 
 if __name__ == "__main__":
