@@ -29,6 +29,7 @@ def parse_args():
     parser.add_argument("--dataset_root", type=str, required=True)
     parser.add_argument("--checkpoint",   type=str, default="", help="Path to best.pth")
     parser.add_argument("--baseline_only", action="store_true", help="Test pure DINOv2 without LoRA/weights")
+    parser.add_argument("--layer",        type=int, default=-1, help="Transformer layer to extract features from (-1=last)")
     parser.add_argument("--alpha",        type=float, default=0.1)
     parser.add_argument("--img_size",     type=int, default=224)
     parser.add_argument("--batch_size",   type=int, default=16)
@@ -48,6 +49,9 @@ def main():
         assert args.checkpoint, "Must provide --checkpoint unless --baseline_only is used"
         ckpt = torch.load(args.checkpoint, map_location=device)
         saved_args = ckpt.get("args", {})
+        # Se l'utente non ha specificato un layer, usa quello del checkpoint
+        if args.layer == -1 and "layer" in saved_args:
+            args.layer = saved_args["layer"]
     else:
         print("[INFO] BASELINE MODE: Testing pure DINOv2 without LoRA!")
         ckpt = {}
@@ -55,6 +59,7 @@ def main():
 
     backbone = DINOv2Extractor(
         model_name=saved_args.get("backbone", "dinov2_vitb14"),
+        layer=args.layer,
         freeze=True,
     )
     
