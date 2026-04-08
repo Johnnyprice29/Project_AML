@@ -11,6 +11,7 @@ Usage:
         --alpha        0.1
 """
 
+import os
 import argparse
 import torch
 from torch.utils.data import DataLoader
