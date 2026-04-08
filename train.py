@@ -257,11 +257,42 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs
     )
+    scaler = torch.cuda.amp.GradScaler()
+
+    # ---- Resume Logic ----
+    start_epoch = 1
+    best_pck = 0.0
+    
+    # Cerchiamo il checkpoint più recente per il resume
+    latest_found = None
+    for e in range(args.epochs, 0, -1):
+        test_path = os.path.join(args.output_dir, f"{args.exp_name}_epoch_{e}.pth")
+        backup_test = os.path.join(config["backup_dir"], f"{args.exp_name}_epoch_{e}.pth") if config.get("backup_dir") else None
+        
+        if backup_test and os.path.exists(backup_test):
+            latest_found = backup_test
+            break
+        if os.path.exists(test_path):
+            latest_found = test_path
+            break
+            
+    if latest_found:
+        try:
+            checkpoint = torch.load(latest_found, map_location=device)
+            model.load_state_dict(checkpoint["model_state_dict"])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            if "scheduler_state_dict" in checkpoint:
+                scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            if "scaler_state_dict" in checkpoint:
+                scaler.load_state_dict(checkpoint["scaler_state_dict"])
+            start_epoch = checkpoint["epoch"] + 1
+            best_pck = checkpoint.get("best_pck", 0.0)
+            print(f"[RESUME] Ripresa dall'epoca {start_epoch} usando {os.path.basename(latest_found)}")
+        except Exception as e:
+            print(f"[WARNING] Fallito resume da {latest_found}: {e}")
 
     # ---- Training ----
-    scaler = torch.cuda.amp.GradScaler(enabled=device.type=='cuda')
-    best_pck = 0.0
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(start_epoch, args.epochs + 1):
         # Advance curriculum sampler
         if curriculum_sampler is not None:
             curriculum_sampler.set_epoch(epoch)
@@ -285,9 +316,40 @@ def main():
             with open(os.path.join(config["backup_dir"], "training_log.txt"), "a", encoding="utf-8") as f:
                 f.write(log_str + "\n")
 
+        # ---- Save LAST checkpoint (for resume) ----
+        # Usiamo un nome fisso 'last.pth' per facilitare il Resume automatico, 
+        # ma salviamo anche un riferimento all'epoca nel log.
+        latest_ckpt = {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "scaler_state_dict": scaler.state_dict(),
+            "best_pck": best_pck,
+            "args": vars(args),
+        }
+        last_path = os.path.join(args.output_dir, "last.pth")
+        torch.save(latest_ckpt, last_path)
+        
+        if config.get("backup_dir"):
+            try:
+                shutil.copy(last_path, os.path.join(config["backup_dir"], "last.pth"))
+            except: pass
+
         if val_pck > best_pck:
             best_pck = val_pck
-            ckpt_path = os.path.join(args.output_dir, "best.pth")
+            
+            # Nome parlante per il file migliore
+            clean_backbone = args.backbone.replace("/", "_")
+            ckpt_name = f"{clean_backbone}_best_pck{val_pck:.3f}.pth"
+            ckpt_path = os.path.join(args.output_dir, ckpt_name)
+            
+            # Rimuoviamo vecchi "best" per non intasare il drive
+            for f in os.listdir(args.output_dir):
+                if "_best_pck" in f and f != ckpt_name:
+                    try: os.remove(os.path.join(args.output_dir, f))
+                    except: pass
+
             torch.save({
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -295,13 +357,25 @@ def main():
                 "val_pck": val_pck,
                 "args": vars(args),
             }, ckpt_path)
-            print(f"  ✓ Saved best checkpoint → {ckpt_path}  (PCK@0.1={val_pck:.4f})")
             
-            # Backup opzionale su Google Drive
+            # Creiamo anche un link simbolico o copia 'best.pth' fissa per gli script di valutazione
+            static_best = os.path.join(args.output_dir, "best.pth")
+            torch.save({"link": ckpt_name}, static_best) # Solo un puntatore o ricopiamo
+            shutil.copy(ckpt_path, static_best)
+            
+            print(f"  ✓ Saved best checkpoint → {ckpt_name}  (PCK@0.1={val_pck:.4f})")
+            
             if config.get("backup_dir"):
                 try:
                     os.makedirs(config["backup_dir"], exist_ok=True)
-                    shutil.copy(ckpt_path, os.path.join(config["backup_dir"], "best.pth"))
+                    # Pulizia vecchi best nel backup
+                    for f in os.listdir(config["backup_dir"]):
+                        if "_best_pck" in f and f != ckpt_name:
+                            try: os.remove(os.path.join(config["backup_dir"], f))
+                            except: pass
+                    
+                    shutil.copy(ckpt_path, os.path.join(config["backup_dir"], ckpt_name))
+                    shutil.copy(static_best, os.path.join(config["backup_dir"], "best.pth"))
                     print(f"  ✓ Backup copiato in → {config['backup_dir']}")
                 except Exception as e:
                     print(f"  [Warning] Fallito il backup su Drive: {e}")
