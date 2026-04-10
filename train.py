@@ -146,6 +146,8 @@ def parse_args():
     parser.add_argument("--output_dir",   type=str, default="./checkpoints")
     parser.add_argument("--backup_dir",   type=str, default="",
                         help="Cartella opzionale (es. su Drive) dove copiare il checkpoint.")
+    parser.add_argument("--exp_name",     type=str, default="experiment",
+                        help="Nome dell'esperimento (es. lora_only, lora_curriculum)")
     parser.add_argument("--seed",         type=int, default=42)
     # --- Curriculum Learning ---
     parser.add_argument("--curriculum_epochs",   type=int,   default=10,
@@ -257,7 +259,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, T_max=args.epochs
     )
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler('cuda', enabled=device.type=='cuda')
 
     # ---- Resume Logic ----
     start_epoch = 1
@@ -316,10 +318,8 @@ def main():
             with open(os.path.join(config["backup_dir"], "training_log.txt"), "a", encoding="utf-8") as f:
                 f.write(log_str + "\n")
 
-        # ---- Save LAST checkpoint (for resume) ----
-        # Usiamo un nome fisso 'last.pth' per facilitare il Resume automatico, 
-        # ma salviamo anche un riferimento all'epoca nel log.
-        latest_ckpt = {
+        # ---- Save checkpoint per epoca (per resume) ----
+        ckpt_data = {
             "epoch": epoch,
             "model_state_dict": model.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
@@ -328,57 +328,29 @@ def main():
             "best_pck": best_pck,
             "args": vars(args),
         }
-        last_path = os.path.join(args.output_dir, "last.pth")
-        torch.save(latest_ckpt, last_path)
+        epoch_name = f"{args.exp_name}_epoch_{epoch}.pth"
+        epoch_path = os.path.join(args.output_dir, epoch_name)
+        torch.save(ckpt_data, epoch_path)
         
         if config.get("backup_dir"):
             try:
-                shutil.copy(last_path, os.path.join(config["backup_dir"], "last.pth"))
+                os.makedirs(config["backup_dir"], exist_ok=True)
+                shutil.copy(epoch_path, os.path.join(config["backup_dir"], epoch_name))
             except: pass
 
         if val_pck > best_pck:
             best_pck = val_pck
-            
-            # Nome parlante per il file migliore
-            clean_backbone = args.backbone.replace("/", "_")
-            ckpt_name = f"{clean_backbone}_best_pck{val_pck:.3f}.pth"
-            ckpt_path = os.path.join(args.output_dir, ckpt_name)
-            
-            # Rimuoviamo vecchi "best" per non intasare il drive
-            for f in os.listdir(args.output_dir):
-                if "_best_pck" in f and f != ckpt_name:
-                    try: os.remove(os.path.join(args.output_dir, f))
-                    except: pass
-
-            torch.save({
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "val_pck": val_pck,
-                "args": vars(args),
-            }, ckpt_path)
-            
-            # Creiamo anche un link simbolico o copia 'best.pth' fissa per gli script di valutazione
-            static_best = os.path.join(args.output_dir, "best.pth")
-            torch.save({"link": ckpt_name}, static_best) # Solo un puntatore o ricopiamo
-            shutil.copy(ckpt_path, static_best)
-            
-            print(f"  ✓ Saved best checkpoint → {ckpt_name}  (PCK@0.1={val_pck:.4f})")
+            best_name = f"{args.exp_name}_best.pth"
+            best_path = os.path.join(args.output_dir, best_name)
+            torch.save(ckpt_data, best_path)
+            print(f"  ✓ Saved best → {best_name}  (PCK@0.1={val_pck:.4f})")
             
             if config.get("backup_dir"):
                 try:
-                    os.makedirs(config["backup_dir"], exist_ok=True)
-                    # Pulizia vecchi best nel backup
-                    for f in os.listdir(config["backup_dir"]):
-                        if "_best_pck" in f and f != ckpt_name:
-                            try: os.remove(os.path.join(config["backup_dir"], f))
-                            except: pass
-                    
-                    shutil.copy(ckpt_path, os.path.join(config["backup_dir"], ckpt_name))
-                    shutil.copy(static_best, os.path.join(config["backup_dir"], "best.pth"))
-                    print(f"  ✓ Backup copiato in → {config['backup_dir']}")
+                    shutil.copy(best_path, os.path.join(config["backup_dir"], best_name))
+                    print(f"  ✓ Backup → {config['backup_dir']}")
                 except Exception as e:
-                    print(f"  [Warning] Fallito il backup su Drive: {e}")
+                    print(f"  [Warning] Backup fallito: {e}")
 
     print(f"\n[DONE] Best val PCK@0.1 = {best_pck:.4f}")
 
