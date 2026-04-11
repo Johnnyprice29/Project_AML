@@ -132,7 +132,8 @@ def parse_args():
     parser.add_argument("--backbone",     type=str, default="dinov2_vitb14",
                         choices=["dinov2_vits14", "dinov2_vitb14",
                                  "dinov2_vitl14", "dinov2_vitg14"])
-    parser.add_argument("--img_size",     type=int, default=224)
+    parser.add_argument("--peft_type",    type=str, default="lora", choices=["lora", "bitfit", "none"],
+                        help="Tipo di Fine-Tuning Efficiente")
     parser.add_argument("--lora_rank",    type=int, default=16)
     parser.add_argument("--lora_alpha",   type=int, default=32)
     parser.add_argument("--proj_dim",     type=int, default=256)
@@ -236,12 +237,20 @@ def main():
     print(f"[INFO] Train: {len(train_ds)} pairs | Val: {len(val_ds)} pairs")
 
     # ---- Model ----
-    backbone = DINOv2Extractor(model_name=args.backbone, freeze=False)
-    backbone.model = apply_lora_to_dinov2(
-        backbone.model,
-        rank=args.lora_rank,
-        lora_alpha=args.lora_alpha,
-    )
+    backbone = DINOv2Extractor(model_name=args.backbone, freeze=True)
+    
+    if args.peft_type == "lora":
+        backbone.model = apply_lora_to_dinov2(
+            backbone.model,
+            rank=args.lora_rank,
+            lora_alpha=args.lora_alpha,
+        )
+    elif args.peft_type == "bitfit":
+        print("[INFO] BitFit enabled: unfreezing all bias parameters.")
+        for name, param in backbone.model.named_parameters():
+            if "bias" in name:
+                param.requires_grad = True
+
     model = SemanticCorrespondenceModel(
         backbone=backbone,
         proj_dim=args.proj_dim,
