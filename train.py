@@ -134,6 +134,7 @@ def parse_args():
                                  "dinov2_vitl14", "dinov2_vitg14"])
     parser.add_argument("--peft_type",    type=str, default="lora", choices=["lora", "bitfit", "none"],
                         help="Tipo di Fine-Tuning Efficiente")
+    parser.add_argument("--img_size",     type=int, default=224)
     parser.add_argument("--lora_rank",    type=int, default=16)
     parser.add_argument("--lora_alpha",   type=int, default=32)
     parser.add_argument("--proj_dim",     type=int, default=256)
