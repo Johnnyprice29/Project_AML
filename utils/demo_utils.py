@@ -33,14 +33,20 @@ def launch_stage_demo(title, ckpt_name=None, layer_idx=-1, show_layer_slider=Fal
             path = f'/content/drive/MyDrive/AML/Checkpoints/{ckpt_name}/best.pth'
             if os.path.exists(path):
                 ckpt = torch.load(path, map_location=device)
-                peft_type = ckpt['args'].get('peft_type', 'lora')
-                if peft_type == 'lora':
-                    print(f"[INFO] Applying LoRA (rank={ckpt['args'].get('lora_rank', 16)}) to demo model.")
+                model_state = ckpt.get("model_state_dict", {})
+                has_lora_keys = any("base_model" in k for k in model_state.keys())
+                
+                if has_lora_keys:
+                    print(f"[INFO] Demo: Applying LoRA to backbone.")
                     backbone.model = apply_lora_to_dinov2(backbone.model, rank=ckpt['args'].get('lora_rank', 16))
-                elif peft_type == 'bitfit':
-                    print("[INFO] BitFit detected: unfreezing bias parameters for demo.")
-                    for n, p in backbone.model.named_parameters():
-                        if "bias" in n: p.requires_grad = True
+                else:
+                    peft_type = ckpt['args'].get('peft_type', 'none')
+                    if peft_type == 'bitfit':
+                        print("[INFO] Demo: BitFit detected.")
+                        for n, p in backbone.model.named_parameters():
+                            if "bias" in n: p.requires_grad = True
+                    else:
+                        print("[INFO] Demo: Flat backbone.")
                 
                 model = SemanticCorrespondenceModel(backbone=backbone, use_adaptive_win=True).to(device)
                 model.load_state_dict(ckpt['model_state_dict'])

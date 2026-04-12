@@ -66,18 +66,24 @@ def main():
     )
     
     if not args.baseline_only:
-        peft_type = saved_args.get("peft_type", "lora")
-        if peft_type == "lora":
-            print(f"[INFO] Applying LoRA (rank={saved_args.get('lora_rank', 16)}) to backbone.")
-            backbone.model = apply_lora_to_dinov2(
-                backbone.model, 
-                rank=saved_args.get("lora_rank", 16),
-                lora_alpha=saved_args.get("lora_alpha", 32)
-            )
-        elif peft_type == "bitfit":
-            print("[INFO] BitFit detected: unfreezing bias parameters before loading.")
-            for n, p in backbone.model.named_parameters():
-                if "bias" in n: p.requires_grad = True
+        # Rilevamento automatico: se ci sono chiavi LoRA nel checkpoint, prepariamo il modello con LoRA
+        model_state = ckpt.get("model_state_dict", {})
+        has_lora_keys = any("base_model" in k for k in model_state.keys())
+        
+        if has_lora_keys:
+            rank = saved_args.get("lora_rank", 16)
+            alpha = saved_args.get("lora_alpha", 32)
+            print(f"[INFO] Detected LoRA keys. Applying LoRA (rank={rank}) to backbone.")
+            backbone.model = apply_lora_to_dinov2(backbone.model, rank=rank, lora_alpha=alpha)
+        else:
+            # Potrebbe essere BitFit or Baseline
+            peft_type = saved_args.get("peft_type", "none")
+            if peft_type == "bitfit":
+                print("[INFO] Detected BitFit/Flat structure. Unfreezing biases.")
+                for n, p in backbone.model.named_parameters():
+                    if "bias" in n: p.requires_grad = True
+            else:
+                print("[INFO] Loading into a flat backbone structure.")
 
     model = SemanticCorrespondenceModel(
         backbone=backbone,
