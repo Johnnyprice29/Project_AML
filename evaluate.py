@@ -66,12 +66,18 @@ def main():
     )
     
     if not args.baseline_only:
-        # Applica LoRA con gli stessi parametri del training (default rank=16)
-        backbone.model = apply_lora_to_dinov2(
-            backbone.model, 
-            rank=saved_args.get("lora_rank", 16),
-            lora_alpha=saved_args.get("lora_alpha", 32)
-        )
+        peft_type = saved_args.get("peft_type", "lora")
+        if peft_type == "lora":
+            print(f"[INFO] Applying LoRA (rank={saved_args.get('lora_rank', 16)}) to backbone.")
+            backbone.model = apply_lora_to_dinov2(
+                backbone.model, 
+                rank=saved_args.get("lora_rank", 16),
+                lora_alpha=saved_args.get("lora_alpha", 32)
+            )
+        elif peft_type == "bitfit":
+            print("[INFO] BitFit detected: unfreezing bias parameters before loading.")
+            for n, p in backbone.model.named_parameters():
+                if "bias" in n: p.requires_grad = True
 
     model = SemanticCorrespondenceModel(
         backbone=backbone,

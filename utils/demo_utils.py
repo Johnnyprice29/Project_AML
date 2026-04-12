@@ -34,10 +34,11 @@ def launch_stage_demo(title, ckpt_name=None, layer_idx=-1, show_layer_slider=Fal
             if os.path.exists(path):
                 ckpt = torch.load(path, map_location=device)
                 peft_type = ckpt['args'].get('peft_type', 'lora')
-                
                 if peft_type == 'lora':
+                    print(f"[INFO] Applying LoRA (rank={ckpt['args'].get('lora_rank', 16)}) to demo model.")
                     backbone.model = apply_lora_to_dinov2(backbone.model, rank=ckpt['args'].get('lora_rank', 16))
                 elif peft_type == 'bitfit':
+                    print("[INFO] BitFit detected: unfreezing bias parameters for demo.")
                     for n, p in backbone.model.named_parameters():
                         if "bias" in n: p.requires_grad = True
                 
