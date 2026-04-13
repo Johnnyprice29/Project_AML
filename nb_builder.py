@@ -15,7 +15,7 @@ nb = {
             "!pip install -r requirements.txt -q\n",
             "!pip install gradio -q\n",
             "!python dataloaders/download_spair.py --root ./data\n\n",
-            "from utils.demo_utils import launch_stage_demo"
+            "from utils.demo_utils import launch_stage_demo, launch_comparison_demo"
         ]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Stage 1: Backbone Analysis"]},
@@ -26,7 +26,7 @@ nb = {
         {"cell_type": "code", "metadata": {}, "source": ["# 2.1 Training LoRA\n!python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir /content/drive/MyDrive/AML/Checkpoints/lora_only"]},
         {"cell_type": "code", "metadata": {}, "source": ["# 2.2 Training BitFit (Ablation Study)\n!python train.py --peft_type bitfit --dataset_root ./data/SPair-71k --epochs 5 --exp_name bitfit_only --output_dir ./checkpoints/bitfit_only --backup_dir /content/drive/MyDrive/AML/Checkpoints/bitfit_only"]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Stage 3: Raffinamento e Ablazione\n", "In questa fase analizziamo l'impatto dell'Adaptive Window (AW) sui pesi ottimizzati."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Stage 3: Raffinamento e Ablazione"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["### 🎯 3.1 Raffinamento LoRA (Modello di Punta)"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -45,11 +45,15 @@ nb = {
             "launch_stage_demo('BitFit (Comparison Demo)', ckpt_name='bitfit_only')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌟 4. Stage 4: Demo Finale e Segment-Aware\n", "Demo con integrazione SAM per il filtraggio delle corrispondenze basato su maschere di segmentazione."]},
-        {"cell_type": "code", "metadata": {}, "source": ["launch_stage_demo('Modello Finale (LoRA) + SAM Integration', ckpt_name='lora_only')"]}
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌟 4. Stage 4: Demo Finale e Segment-Aware"]},
+        {"cell_type": "code", "metadata": {}, "source": ["launch_stage_demo('Modello Finale (LoRA) + SAM Integration', ckpt_name='lora_only')"]},
+
+        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Stage 5: Comparison Showcase (Baseline vs LoRA+AW)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["Questa demo permette di confrontare istantaneamente il modello base con la nostra versione ottimizzata."]},
+        {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]}
     ]
 }
 
 with open("Project_Final_Pipeline.ipynb", "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print("Notebook ripristinato integralmente con tutte le demo!")
+print("Notebook aggiornato con lo Stage 5: Comparison Demo!")

@@ -89,3 +89,139 @@ def launch_stage_demo(title, ckpt_name=None, layer_idx=-1, show_layer_slider=Fal
             so, to = gr.Image(type='pil', label='Selection'), gr.Image(type='pil', label='Prediction')
         si.select(gradio_fn, [si, ti, lyr_ctrl, sam_ctrl], [so, to])
     d.launch(share=True, inline=False)
+
+# =============================================================================
+# COMPARISON DEMO (Baseline vs LoRA+AW)
+# =============================================================================
+
+def launch_comparison_demo(ckpt_name='lora_only'):
+    import gradio as gr
+    import torch
+    import os
+    import random
+    from PIL import Image, ImageDraw
+    import torchvision.transforms as T
+    from models.extractor import DINOv2Extractor
+    from models.lora import apply_lora_to_dinov2
+    from models.correspondence import SemanticCorrespondenceModel
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"[INFO] Launching Comparison Demo on {device}...")
+
+    # 1. Caricamento Modelli
+    # Baseline
+    backbone_base = DINOv2Extractor(model_name='dinov2_vitb14', layer=11, freeze=True)
+    model_base = SemanticCorrespondenceModel(backbone=backbone_base, use_adaptive_win=False).to(device).eval()
+    
+    # LoRA + AW
+    backbone_lora = DINOv2Extractor(model_name='dinov2_vitb14', layer=11, freeze=True)
+    ckpt_path = f'/content/drive/MyDrive/AML/Checkpoints/{ckpt_name}/best.pth'
+    if not os.path.exists(ckpt_path):
+        ckpt_path = f'g:/My Drive/AML/Checkpoints/{ckpt_name}/best.pth'
+        
+    if os.path.exists(ckpt_path):
+        ckpt = torch.load(ckpt_path, map_location=device)
+        model_state = ckpt.get("model_state_dict", {})
+        if any("base_model" in k for k in model_state.keys()):
+            backbone_lora.model = apply_lora_to_dinov2(backbone_lora.model, rank=ckpt.get('args', {}).get('lora_rank', 16))
+        model_lora = SemanticCorrespondenceModel(backbone=backbone_lora, use_adaptive_win=True).to(device)
+        model_lora.load_state_dict(ckpt['model_state_dict'])
+        print(f"[INFO] LoRA model loaded from {ckpt_path}")
+    else:
+        print("[WARN] LoRA checkpoint not found. Using baseline for secondary model too.")
+        model_lora = model_base
+    
+    model_lora.eval()
+
+    transform = T.Compose([
+        T.Resize((224, 224)),
+        T.ToTensor(),
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    test_img_dir = '/content/Project_AML/test_images'
+    if not os.path.exists(test_img_dir):
+        test_img_dir = 'g:/My Drive/Magistrale/2year2semester/AML/Project_AML/test_images'
+
+    def get_random_pair():
+        if not os.path.exists(test_img_dir): return None, None
+        files = [f for f in os.listdir(test_img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if not files: return None, None
+        sources = [f for f in files if '_src' in f]
+        if not sources: return None, None
+        src = random.choice(sources)
+        prefix = src.split('_src')[0]
+        trgs = [f for f in files if prefix in f and '_trg' in f]
+        trg = random.choice(trgs) if trgs else random.choice([f for f in files if '_trg' in f])
+        return Image.open(os.path.join(test_img_dir, src)), Image.open(os.path.join(test_img_dir, trg))
+
+    def predict(src_img, trg_img, evt: gr.SelectData):
+        if src_img is None or trg_img is None: return None, None
+        sx, sy = evt.index[0], evt.index[1]
+        s_t = transform(src_img).unsqueeze(0).to(device)
+        t_t = transform(trg_img).unsqueeze(0).to(device)
+        scale = (224 / src_img.width, 224 / src_img.height)
+        src_kp = torch.tensor([[[sx * scale[0], sy * scale[1]]]], device=device).float()
+        with torch.no_grad():
+            out_b = model_base(s_t, t_t, src_kps=src_kp)
+            pkp_b = out_b['pred_kps'][0,0].cpu().numpy()
+            bx, by = pkp_b[0] * (trg_img.width/224), pkp_b[1] * (trg_img.height/224)
+            out_l = model_lora(s_t, t_t, src_kps=src_kp)
+            pkp_l = out_l['pred_kps'][0,0].cpu().numpy()
+            lx, ly = pkp_l[0] * (trg_img.width/224), pkp_l[1] * (trg_img.height/224)
+        r = 8
+        res_base = trg_img.copy()
+        ImageDraw.Draw(res_base).ellipse([bx-r, by-r, bx+r, by+r], fill='red', outline='white', width=2)
+        res_lora = trg_img.copy()
+        ImageDraw.Draw(res_lora).ellipse([lx-r, ly-r, lx+r, ly+r], fill='#00FF00', outline='white', width=2)
+        return res_base, res_lora
+
+    def save_match(src, res_b, res_l):
+        if src is None or res_b is None or res_l is None:
+            return "❌ Nessun match da salvare."
+        
+        save_dir = '/content/drive/MyDrive/AML/Results/Gradio_Captures'
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
+        
+        # Creo il collage [Source | Baseline | LoRA]
+        w, h = src.size
+        # Ridimensiono per coerenza se necessario
+        res_b = res_b.resize((w, h))
+        res_l = res_l.resize((w, h))
+        
+        collage = Image.new('RGB', (w * 3, h))
+        collage.paste(src, (0, 0))
+        collage.paste(res_b, (w, 0))
+        collage.paste(res_l, (w * 2, 0))
+        
+        import datetime
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        fname = f"match_{ts}.png"
+        path = os.path.join(save_dir, fname)
+        collage.save(path)
+        return f"✅ Salvato: {fname} in Gradio_Captures"
+
+    def load_random():
+        s, t = get_random_pair()
+        return s, t
+
+    with gr.Blocks(title="AML Comparison Demo") as demo:
+        gr.Markdown("## 🧬 Comparison: Baseline (Red) vs LoRA+AW (Green)")
+        with gr.Row():
+            src_input = gr.Image(label="Source (Click to match)", type="pil")
+            with gr.Column():
+                btn_rand = gr.Button("🎲 Random Test Pair")
+                trg_input = gr.Image(label="Target", type="pil")
+        with gr.Row():
+            out_base = gr.Image(label="Baseline (Red Point)", type="pil")
+            out_lora = gr.Image(label="Your Model (Green Point)", type="pil")
+        
+        save_btn = gr.Button("💾 Salva questo Match su Drive")
+        status_msg = gr.Markdown("")
+
+        btn_rand.click(load_random, outputs=[src_input, trg_input])
+        src_input.select(predict, inputs=[src_input, trg_input], outputs=[out_base, out_lora])
+        save_btn.click(save_match, inputs=[src_input, out_base, out_lora], outputs=status_msg)
+
+    demo.launch(share=True, debug=True)
