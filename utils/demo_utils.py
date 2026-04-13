@@ -162,38 +162,43 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         t_t = transform(trg_img).unsqueeze(0).to(device)
         scale = (224 / src_img.width, 224 / src_img.height)
         src_kp = torch.tensor([[[sx * scale[0], sy * scale[1]]]], device=device).float()
+        
         with torch.no_grad():
+            # 1. Baseline
             out_b = model_base(s_t, t_t, src_kps=src_kp)
             pkp_b = out_b['pred_kps'][0,0].cpu().numpy()
             bx, by = pkp_b[0] * (trg_img.width/224), pkp_b[1] * (trg_img.height/224)
+            
+            # 2. Tuo Modello (LoRA + AW)
             out_l = model_lora(s_t, t_t, src_kps=src_kp)
             pkp_l = out_l['pred_kps'][0,0].cpu().numpy()
             lx, ly = pkp_l[0] * (trg_img.width/224), pkp_l[1] * (trg_img.height/224)
+
         r = 8
         res_base = trg_img.copy()
         ImageDraw.Draw(res_base).ellipse([bx-r, by-r, bx+r, by+r], fill='red', outline='white', width=2)
-        res_lora = trg_img.copy()
-        ImageDraw.Draw(res_lora).ellipse([lx-r, ly-r, lx+r, ly+r], fill='#00FF00', outline='white', width=2)
-        return res_base, res_lora
+        
+        res_aw = trg_img.copy()
+        ImageDraw.Draw(res_aw).ellipse([lx-r, ly-r, lx+r, ly+r], fill='#00FF00', outline='white', width=2)
+        
+        return res_base, res_aw
 
-    def save_match(src, res_b, res_l):
-        if src is None or res_b is None or res_l is None:
+    def save_match(src, res_b, res_aw):
+        if src is None or res_b is None or res_aw is None:
             return "❌ Nessun match da salvare."
         
         save_dir = '/content/drive/MyDrive/AML/Results/Gradio_Captures'
         if not os.path.exists(save_dir):
             os.makedirs(save_dir, exist_ok=True)
         
-        # Creo il collage [Source | Baseline | LoRA]
         w, h = src.size
-        # Ridimensiono per coerenza se necessario
-        res_b = res_b.resize((w, h))
-        res_l = res_l.resize((w, h))
+        res_b, res_aw = res_b.resize((w, h)), res_aw.resize((w, h))
         
+        # Collage: [Source | Baseline | LoRA+AW]
         collage = Image.new('RGB', (w * 3, h))
         collage.paste(src, (0, 0))
         collage.paste(res_b, (w, 0))
-        collage.paste(res_l, (w * 2, 0))
+        collage.paste(res_aw, (w * 2, 0))
         
         import datetime
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -207,21 +212,24 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         return s, t
 
     with gr.Blocks(title="AML Comparison Demo") as demo:
-        gr.Markdown("## 🧬 Comparison: Baseline (Red) vs LoRA+AW (Green)")
-        with gr.Row():
-            src_input = gr.Image(label="Source (Click to match)", type="pil")
-            with gr.Column():
-                btn_rand = gr.Button("🎲 Random Test Pair")
-                trg_input = gr.Image(label="Target", type="pil")
-        with gr.Row():
-            out_base = gr.Image(label="Baseline (Red Point)", type="pil")
-            out_lora = gr.Image(label="Your Model (Green Point)", type="pil")
+        gr.Markdown("# 🧬 Interactive Comparison: Baseline vs Our Model")
+        gr.Markdown("Clicca sulla sinistra per confrontare **Baseline (Rosso)** e **LoRA+AW (Verde)**. Usa il tasto 💾 per salvare i risultati migliori su Drive.")
         
-        save_btn = gr.Button("💾 Salva questo Match su Drive")
+        with gr.Row():
+            src_input = gr.Image(label="Source Image (Clicca)", type="pil")
+            with gr.Column():
+                btn_rand = gr.Button("🎲 Carica Coppia Casuale")
+                trg_input = gr.Image(label="Target Image", type="pil")
+        
+        with gr.Row():
+            out_base = gr.Image(label="Baseline (ROSSO)", type="pil")
+            out_aw = gr.Image(label="Il Tuo Modello (VERDE)", type="pil")
+        
+        save_btn = gr.Button("💾 SALVA MATCH SU DRIVE")
         status_msg = gr.Markdown("")
 
         btn_rand.click(load_random, outputs=[src_input, trg_input])
-        src_input.select(predict, inputs=[src_input, trg_input], outputs=[out_base, out_lora])
-        save_btn.click(save_match, inputs=[src_input, out_base, out_lora], outputs=status_msg)
+        src_input.select(predict, inputs=[src_input, trg_input], outputs=[out_base, out_aw])
+        save_btn.click(save_match, inputs=[src_input, out_base, out_aw], outputs=status_msg)
 
     demo.launch(share=True, debug=True)
