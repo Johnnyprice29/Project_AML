@@ -187,14 +187,22 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         if src is None or res_b is None or res_aw is None:
             return "❌ Nessun match da salvare."
         
-        # Percorso dinamico: Colab vs Locale
-        save_dir = '/content/drive/MyDrive/AML/Results/Gradio_Captures'
-        if not os.path.exists('/content/drive'):
-            # Fallback per PC Locale
+        # Percorso dinamico robusto (Colab / MyDrive / My Drive / Local)
+        colab_base = '/content/drive/MyDrive'
+        if not os.path.exists(colab_base):
+            colab_base = '/content/drive/My Drive'
+        
+        if os.path.exists(colab_base):
+            save_dir = os.path.join(colab_base, 'AML/Results/Gradio_Captures')
+        else:
+            # Fallback Locale
             save_dir = 'g:/My Drive/AML/Results/Gradio_Captures'
             
         if not os.path.exists(save_dir):
-            os.makedirs(save_dir, exist_ok=True)
+            try:
+                os.makedirs(save_dir, exist_ok=True)
+            except:
+                return f"❌ Errore: Impossibile creare la cartella in {save_dir}"
         
         w, h = src.size
         res_b, res_aw = res_b.resize((w, h)), res_aw.resize((w, h))
