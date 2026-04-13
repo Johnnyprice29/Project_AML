@@ -156,7 +156,7 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         return Image.open(os.path.join(test_img_dir, src)), Image.open(os.path.join(test_img_dir, trg))
 
     def predict(src_img, trg_img, evt: gr.SelectData):
-        if src_img is None or trg_img is None: return None, None
+        if src_img is None or trg_img is None: return None, None, (0, 0)
         sx, sy = evt.index[0], evt.index[1]
         s_t = transform(src_img).unsqueeze(0).to(device)
         t_t = transform(trg_img).unsqueeze(0).to(device)
@@ -181,35 +181,25 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         res_aw = trg_img.copy()
         ImageDraw.Draw(res_aw).ellipse([lx-r, ly-r, lx+r, ly+r], fill='#00FF00', outline='white', width=2)
         
-        return res_base, res_aw
+        return res_base, res_aw, (sx, sy)
 
-    def save_match(src, res_b, res_aw):
+    def save_match(src, res_b, res_aw, coords):
         if src is None or res_b is None or res_aw is None:
             return "❌ Nessun match da salvare."
         
-        # Percorso dinamico robusto (Colab / MyDrive / My Drive / Local)
-        colab_base = '/content/drive/MyDrive'
-        if not os.path.exists(colab_base):
-            colab_base = '/content/drive/My Drive'
-        
-        if os.path.exists(colab_base):
-            save_dir = os.path.join(colab_base, 'AML/Results/Gradio_Captures')
-        else:
-            # Fallback Locale
-            save_dir = 'g:/My Drive/AML/Results/Gradio_Captures'
-            
-        if not os.path.exists(save_dir):
-            try:
-                os.makedirs(save_dir, exist_ok=True)
-            except:
-                return f"❌ Errore: Impossibile creare la cartella in {save_dir}"
+        sx, sy = coords
+        colab_base = '/content/drive/MyDrive' if os.path.exists('/content/drive/MyDrive') else '/content/drive/My Drive'
+        save_dir = os.path.join(colab_base, 'AML/Results/Gradio_Captures') if os.path.exists('/content/drive') else 'g:/My Drive/AML/Results/Gradio_Captures'
+        os.makedirs(save_dir, exist_ok=True)
         
         w, h = src.size
-        res_b, res_aw = res_b.resize((w, h)), res_aw.resize((w, h))
+        src_with_pt = src.copy()
+        r = 8
+        ImageDraw.Draw(src_with_pt).ellipse([sx-r, sy-r, sx+r, sy+r], fill='yellow', outline='black', width=2)
         
-        # Collage: [Source | Baseline | LoRA+AW]
+        res_b, res_aw = res_b.resize((w, h)), res_aw.resize((w, h))
         collage = Image.new('RGB', (w * 3, h))
-        collage.paste(src, (0, 0))
+        collage.paste(src_with_pt, (0, 0))
         collage.paste(res_b, (w, 0))
         collage.paste(res_aw, (w * 2, 0))
         
@@ -218,7 +208,6 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         fname = f"match_{ts}.png"
         path = os.path.join(save_dir, fname)
         collage.save(path)
-        
         return f"✅ Salvato con successo in: {os.path.abspath(path)}"
 
     def load_random():
@@ -226,6 +215,7 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         return s, t
 
     with gr.Blocks(title="AML Comparison Demo") as demo:
+        last_coords = gr.State(value=(0, 0))
         gr.Markdown("# 🧬 Interactive Comparison: Baseline vs Our Model")
         gr.Markdown("Clicca sulla sinistra per confrontare **Baseline (Rosso)** e **LoRA+AW (Verde)**. Usa il tasto 💾 per salvare i risultati migliori su Drive.")
         
@@ -243,7 +233,7 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         status_msg = gr.Markdown("")
 
         btn_rand.click(load_random, outputs=[src_input, trg_input])
-        src_input.select(predict, inputs=[src_input, trg_input], outputs=[out_base, out_aw])
-        save_btn.click(save_match, inputs=[src_input, out_base, out_aw], outputs=status_msg)
+        src_input.select(predict, inputs=[src_input, trg_input], outputs=[out_base, out_aw, last_coords])
+        save_btn.click(save_match, inputs=[src_input, out_base, out_aw, last_coords], outputs=status_msg)
 
     demo.launch(share=True, debug=True)
