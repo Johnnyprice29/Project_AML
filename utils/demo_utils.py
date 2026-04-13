@@ -187,7 +187,12 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         if src is None or res_b is None or res_aw is None:
             return "❌ Nessun match da salvare."
         
+        # Percorso dinamico: Colab vs Locale
         save_dir = '/content/drive/MyDrive/AML/Results/Gradio_Captures'
+        if not os.path.exists('/content/drive'):
+            # Fallback per PC Locale
+            save_dir = 'g:/My Drive/AML/Results/Gradio_Captures'
+            
         if not os.path.exists(save_dir):
             os.makedirs(save_dir, exist_ok=True)
         
@@ -205,7 +210,8 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         fname = f"match_{ts}.png"
         path = os.path.join(save_dir, fname)
         collage.save(path)
-        return f"✅ Salvato: {fname} in Gradio_Captures"
+        
+        return f"✅ Salvato con successo in: {os.path.abspath(path)}"
 
     def load_random():
         s, t = get_random_pair()
