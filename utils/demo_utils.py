@@ -115,9 +115,9 @@ def launch_comparison_demo(ckpt_name='lora_only'):
     
     # LoRA + AW
     backbone_lora = DINOv2Extractor(model_name='dinov2_vitb14', layer=11, freeze=True)
-    ckpt_path = f'/content/drive/MyDrive/AML/Checkpoints/{ckpt_name}/best.pth'
+    ckpt_path = f'/content/drive/MyDrive/AML/Checkpoints/{ckpt_name}/{ckpt_name}_best.pth'
     if not os.path.exists(ckpt_path):
-        ckpt_path = f'g:/My Drive/AML/Checkpoints/{ckpt_name}/best.pth'
+        ckpt_path = f'g:/My Drive/AML/Checkpoints/{ckpt_name}/{ckpt_name}_best.pth'
         
     if os.path.exists(ckpt_path):
         ckpt = torch.load(ckpt_path, map_location=device)
