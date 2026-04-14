@@ -133,8 +133,9 @@ def launch_comparison_demo(ckpt_name='lora_only'):
     
     model_lora.eval()
 
+    # Uniformiamo il trasform per entrambi i modelli (evita offset di pixel)
     transform = T.Compose([
-        T.Resize((224, 224)),
+        T.Resize((224, 224), interpolation=T.InterpolationMode.BICUBIC),
         T.ToTensor(),
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
@@ -147,13 +148,26 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         if not os.path.exists(test_img_dir): return None, None
         files = [f for f in os.listdir(test_img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         if not files: return None, None
+        
         sources = [f for f in files if '_src' in f]
         if not sources: return None, None
-        src = random.choice(sources)
-        prefix = src.split('_src')[0]
-        trgs = [f for f in files if prefix in f and '_trg' in f]
-        trg = random.choice(trgs) if trgs else random.choice([f for f in files if '_trg' in f])
-        return Image.open(os.path.join(test_img_dir, src)), Image.open(os.path.join(test_img_dir, trg))
+        src_name = random.choice(sources)
+        
+        # Estrazione INTELLIGENTE della categoria (es: real_car, cross_cat, etc.)
+        # Funziona cercando il prefisso principale prima dei tag _src/_trg
+        import re
+        cat = src_name.split('_src')[0]
+        # Cerchiamo un target della STESSA categoria
+        trgs = [f for f in files if f.startswith(cat) and '_trg' in f]
+        
+        if not trgs:
+            # Fallback a stessa categoria generale (es: car, cat) se non c'e' match esatto
+            gen_cat = re.split(r'[_\d]', cat)[0]
+            trgs = [f for f in files if f.startswith(gen_cat) and '_trg' in f]
+            
+        trg_name = random.choice(trgs) if trgs else random.choice([f for f in files if '_trg' in f])
+        
+        return Image.open(os.path.join(test_img_dir, src_name)), Image.open(os.path.join(test_img_dir, trg_name))
 
     def predict(src_img, trg_img, evt: gr.SelectData):
         if src_img is None or trg_img is None: return None, None, (0, 0)
