@@ -251,3 +251,82 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         save_btn.click(save_match, inputs=[src_input, out_base, out_aw, last_coords], outputs=status_msg)
 
     demo.launch(share=True, debug=True)
+
+# =============================================================================
+# ROBUSTNESS DEMO (Geometric Transformations)
+# =============================================================================
+
+def launch_robustness_demo(ckpt_name='lora_only'):
+    import gradio as gr, torch, os, numpy as np
+    from PIL import Image, ImageDraw
+    import torchvision.transforms as T
+    import torchvision.transforms.functional as TF
+    from models.extractor import DINOv2Extractor
+    from models.lora import apply_lora_to_dinov2
+    from models.correspondence import SemanticCorrespondenceModel
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
+    # 1. Load Optimized Model (Non-distilled ViT-B)
+    backbone = DINOv2Extractor(model_name='dinov2_vitb14', layer=11, freeze=True)
+    ckpt_path = f'/content/drive/MyDrive/AML/Checkpoints/{ckpt_name}/{ckpt_name}_best.pth'
+    if os.path.exists(ckpt_path):
+        ckpt = torch.load(ckpt_path, map_location=device)
+        model_state = ckpt.get("model_state_dict", {})
+        if any("base_model" in k for k in model_state.keys()):
+            backbone.model = apply_lora_to_dinov2(backbone.model, rank=ckpt.get('args', {}).get('lora_rank', 16))
+        model = SemanticCorrespondenceModel(backbone=backbone, use_adaptive_win=True).to(device)
+        model.load_state_dict(ckpt['model_state_dict'])
+        print(f"[INFO] Robustness Demo: Loaded {ckpt_path}")
+    else:
+        model = SemanticCorrespondenceModel(backbone=backbone, use_adaptive_win=True).to(device)
+    model.eval()
+
+    transform = T.Compose([
+        T.Resize((224, 224), interpolation=T.InterpolationMode.BICUBIC),
+        T.ToTensor(),
+        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+
+    def predict_robustness(src_img, angle, evt: gr.SelectData):
+        if src_img is None: return None, None
+        
+        # Create a rotated target
+        trg_img = TF.rotate(src_img, angle, interpolation=T.InterpolationMode.BICUBIC)
+        
+        sx, sy = evt.index[0], evt.index[1]
+        s_t = transform(src_img).unsqueeze(0).to(device)
+        t_t = transform(trg_img).unsqueeze(0).to(device)
+        scale = (224 / src_img.width, 224 / src_img.height)
+        src_kp = torch.tensor([[[sx * scale[0], sy * scale[1]]]], device=device).float()
+        
+        with torch.no_grad():
+            out = model(s_t, t_t, src_kps=src_kp)
+            pkp = out['pred_kps'][0,0].cpu().numpy()
+            tx, ty = pkp[0] * (trg_img.width/224), pkp[1] * (trg_img.height/224)
+
+        r = 8
+        s_res = src_img.copy()
+        ImageDraw.Draw(s_res).ellipse([sx-r, sy-r, sx+r, sy+r], fill='yellow', outline='black', width=2)
+        
+        t_res = trg_img.copy()
+        ImageDraw.Draw(t_res).ellipse([tx-r, ty-r, tx+r, ty+r], fill='#00FF00', outline='white', width=2)
+        
+        return s_res, t_res
+
+    with gr.Blocks(title="Geometric Robustness Demo") as demo:
+        gr.Markdown("# 📐 Geometric Robustness Demo")
+        gr.Markdown("Questa demo testa la resilienza del modello alle rotazioni. Clicca sull'immagine originale e usa lo slider per ruotare l'immagine target.")
+        
+        with gr.Row():
+            src_input = gr.Image(label="Original Image (Clicca)", type="pil")
+            angle_slider = gr.Slider(-180, 180, value=0, label="Rotazione Target (gradi)")
+        
+        with gr.Row():
+            out_src = gr.Image(label="Source Location", type="pil")
+            out_trg = gr.Image(label="Predicted (Rotated Space)", type="pil")
+        
+        src_input.select(predict_robustness, inputs=[src_input, angle_slider], outputs=[out_src, out_trg])
+        angle_slider.change(predict_robustness, inputs=[src_input, angle_slider], outputs=[out_src, out_trg]) # Trigger re-prediction on rotate
+
+    demo.launch(share=True, debug=True)

@@ -32,16 +32,21 @@ class FeatureExtractor(nn.Module):
             self._feat_dim = self.model.embed_dim
             self.model_type = "dino"
         elif "dinov3" in self.model_name:
-            # Assuming DINOv3 is available via hub or similar interface
-            # For now, we fallback to dinov2 as placeholder or specific implementation if provided
+            # Consistent with ViT-B scale, non-distilled
             try:
-                self.model = torch.hub.load("facebookresearch/dinov2", model_name.replace("dinov3", "dinov2"))
-                print(f"[Warning] DINOv3 fallback to {self.model_name.replace('dinov3', 'dinov2')}")
-            except:
-                self.model = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
-            self.patch_size = 14
-            self._feat_dim = self.model.embed_dim
-            self.model_type = "dino"
+                # Official loading for DINOv3
+                from transformers import AutoModel
+                hf_name = "facebook/dinov3-vitb16-pretrain-lvd1689m"
+                if "vits16" in self.model_name: hf_name = "facebook/dinov3-vits16-pretrain-lvd1689m"
+                
+                print(f"[INFO] Loading DINOv3 from HuggingFace: {hf_name}")
+                self.model = AutoModel.from_pretrained(hf_name)
+                self.patch_size = 16
+                self._feat_dim = self.model.config.hidden_size
+                self.model_type = "dinov3"
+            except Exception as e:
+                raise RuntimeError(f"Could not load DINOv3 model {self.model_name}: {e}")
+                
         elif "sam" in self.model_name:
             if sam_model_registry is None:
                 raise ImportError("segment-anything not found. Install it for SAM support.")
@@ -95,6 +100,21 @@ class FeatureExtractor(nn.Module):
             feats = feats.permute(0, 2, 1).reshape(B, self._feat_dim, h, w)
             return feats
             
+        elif self.model_type == "dinov3":
+            # Transformers ViT returns pooler_output and hidden_states
+            actual_layer = self.layer_idx
+            if actual_layer < 0:
+                actual_layer += self.model.config.num_hidden_layers
+            
+            # We need +1 because index 0 is the embedding layer
+            outputs = self.model(x, output_hidden_states=True)
+            feats = outputs.hidden_states[actual_layer + 1] # (B, N, D)
+            
+            # Remove CLS token (usually at index 0)
+            feats = feats[:, 1:, :] 
+            feats = feats.permute(0, 2, 1).reshape(B, self._feat_dim, h, w)
+            return feats
+
         elif self.model_type == "sam":
             # SAM image_encoder strictly expects 1024x1024
             if H != 1024 or W != 1024:
