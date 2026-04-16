@@ -43,7 +43,6 @@ class FeatureExtractor(nn.Module):
                 raise RuntimeError(f"Could not load DINOv2-Reg model: {e}")
                 
         elif "sam" in self.model_name:
-            import torch # Ensure torch is cleared
             torch.cuda.empty_cache() 
             if sam_model_registry is None:
                 raise ImportError("segment-anything not found. Install it for SAM support.")
@@ -116,8 +115,21 @@ class FeatureExtractor(nn.Module):
             # SAM image_encoder strictly expects 1024x1024
             if H != 1024 or W != 1024:
                 x = torch.nn.functional.interpolate(x, size=(1024, 1024), mode="bilinear", align_corners=False)
-            feats = self.model(x) 
-            return feats
+            
+            # Use half precision and checkpointing to save memory on T4
+            from torch.utils.checkpoint import checkpoint
+            def custom_forward(images):
+                return self.model(images)
+            
+            # Move to half precision for SAM
+            self.model.half()
+            x = x.half()
+            
+            # If training/finetuning, checkpointing is needed, but even in eval it helps on T4
+            with torch.cuda.amp.autocast():
+                feats = self.model(x)
+            
+            return feats.float() # Convert back for correspondence consistency
 
     def unfreeze(self):
         for p in self.model.parameters():
