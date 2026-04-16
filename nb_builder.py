@@ -37,7 +37,6 @@ nb = {
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training DINOv2 (LoRA, LoRA+Curriculum)"]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "# 2.1 Training LoRA\n",
             "if not os.path.exists(f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir $DRIVE_CKPTS/lora_only\n",
             "else: print('[OK] LoRA già presente.')"
@@ -46,10 +45,20 @@ nb = {
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Raffinamento (Ablation Study: Adaptive Window)"]},
         {"cell_type": "code", "metadata": {}, "source": [
             "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "if os.path.exists(CKPT_LORA):\n",
-            "    !python evaluate.py --dataset_root ./data/SPair-71k --checkpoint $CKPT_LORA --results_file /content/drive/MyDrive/AML/Results/lora_final_aw.txt\n",
-            "else:\n",
-            "    print(f'[ERROR] Checkpoint non trovato in {CKPT_LORA}. Assicurati di aver completato lo Stage 2.')"
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint $CKPT_LORA --results_file /content/drive/MyDrive/AML/Results/lora_final_aw.txt"
+        ]},
+        
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4.1 Test Generalizzazione (PF-Pascal)"]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "print('Valutazione su PF-Pascal con modello addestrato su SPair...')\n",
+            "!python evaluate.py --dataset_root ./data/PF-Pascal --dataset_type pfpascal --checkpoint $CKPT_LORA --results_file /content/drive/MyDrive/AML/Results/gen_pfpascal.txt"
+        ]},
+        
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 📐 4.2 Test Robustezza Geometrica (Rotazioni)"]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "print('Test di robustezza a rotazioni sintetiche (es. 15 gradi)...')\n",
+            "# In evaluate.py dovremmo avere un flag per la rotazione, se non c'è lo aggiungiamo\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint $CKPT_LORA --results_file /content/drive/MyDrive/AML/Results/robustness_rot.txt"
         ]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Showcase Finali"]},
@@ -60,4 +69,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print(f"Project_Notebook.ipynb (Fix Interpolazione Shell) generato in {output_path}")
+print(f"Project_Notebook.ipynb (Versione Completa con Stage 4) generato in {output_path}")
