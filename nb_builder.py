@@ -6,7 +6,7 @@ output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_No
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
     "cells": [
-        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (Versione Finale)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 📦 0. Setup"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -24,10 +24,11 @@ nb = {
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "def clear_gpu():\n",
             "    gc.collect()\n",
-            "    torch.cuda.empty_cache()"
+            "    torch.cuda.empty_cache()\n",
+            "    print('[INFO] GPU Cleared.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Evaluation Baseline (Multi-Backbone)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Evaluation Baseline"]},
         {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
         {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov3.txt"]},
         {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --batch_size 1 --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"]},
@@ -37,23 +38,20 @@ nb = {
             "CKPT_PATH = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
             "if not os.path.exists(CKPT_PATH):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir \"$DRIVE_CKPTS/lora_only\"\n",
-            "else: print(f'[OK] Checkpoint trovato: {CKPT_PATH}')"
+            "else: print(f'[OK] Checkpoint pronto.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalizzazione e Robustezza (Stage 4)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalizzazione e Robustezza"]},
         {"cell_type": "code", "metadata": {}, "source": [
             "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "print(f'Test su PF-Pascal usando: {CKPT_LORA}')\n",
-            "# Nota: Assicurati che PF-Pascal sia presente in ./data/PF-Pascal\n",
             "!python evaluate.py --dataset_root ./data/PF-Pascal --dataset_type pfpascal --checkpoint \"$CKPT_LORA\" --results_file /content/drive/MyDrive/AML/Results/gen_pfpascal.txt"
         ]},
         {"cell_type": "code", "metadata": {}, "source": [
             "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "print(f'Test Robustezza Geometrica usando: {CKPT_LORA}')\n",
             "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$CKPT_LORA\" --results_file /content/drive/MyDrive/AML/Results/robustness_rot.txt"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Demo Interattive"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Demo"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_robustness_demo(ckpt_name='lora_only')"]}
     ]
@@ -61,4 +59,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print(f"Project_Notebook.ipynb (Versione Pulita) generato in {output_path}")
+print("Project_Notebook.ipynb RIGENERATO SENZA WGET ERRATO.")
