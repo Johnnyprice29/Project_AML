@@ -58,7 +58,8 @@ def main():
         if args.layer == -1 and "layer" in saved_args:
             args.layer = saved_args["layer"]
     else:
-        print("[INFO] BASELINE MODE: Testing pure DINOv2 without LoRA!")
+        model_name = args.backbone if args.backbone else saved_args.get("backbone", "dinov2_vitb14")
+        print(f"[INFO] BASELINE MODE: Testing pure {model_name} without training/PEFT!")
         ckpt = {}
         saved_args = {}
 
