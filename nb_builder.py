@@ -18,9 +18,8 @@ nb = {
             "!pip install -r requirements.txt -q\n",
             "!pip install gradio -q\n",
             "!python dataloaders/download_spair.py --root ./data\n",
-            "# Scarichiamo anche PF-Pascal per lo Stage 4\n",
-            "!mkdir -p ./data/PF-Pascal\n",
-            "!wget -O ./data/PF-Pascal/pfpascal.zip https:// some-url-for-pfpascal (o comando manuale)\n\n",
+            "# Per PF-Pascal (Stage 4), assicurati di avere i dati in ./data/PF-Pascal\n",
+            "!mkdir -p ./data/PF-Pascal\n\n",
             "import os, torch, gc\n",
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "def clear_gpu():\n",
@@ -45,6 +44,7 @@ nb = {
         {"cell_type": "code", "metadata": {}, "source": [
             "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
             "print(f'Test su PF-Pascal usando: {CKPT_LORA}')\n",
+            "# Nota: Assicurati che PF-Pascal sia presente in ./data/PF-Pascal\n",
             "!python evaluate.py --dataset_root ./data/PF-Pascal --dataset_type pfpascal --checkpoint \"$CKPT_LORA\" --results_file /content/drive/MyDrive/AML/Results/gen_pfpascal.txt"
         ]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -61,4 +61,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print(f"Project_Notebook.ipynb (Versione Robusta v2) generato in {output_path}")
+print(f"Project_Notebook.ipynb (Versione Pulita) generato in {output_path}")
