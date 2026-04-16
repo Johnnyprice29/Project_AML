@@ -35,6 +35,7 @@ def parse_args():
     parser.add_argument("--img_size",     type=int, default=224)
     parser.add_argument("--batch_size",   type=int, default=16)
     parser.add_argument("--num_workers",  type=int, default=4)
+    parser.add_argument("--backbone",     type=str, default="", help="Manual backbone choice (overrides checkpoint or default)")
     parser.add_argument("--no_adaptive_win", action="store_true", help="Disable adaptive window")
     parser.add_argument("--results_file", type=str, default="", help="Path to save text results")
     return parser.parse_args()
@@ -59,8 +60,10 @@ def main():
         ckpt = {}
         saved_args = {}
 
+    model_name = args.backbone if args.backbone else saved_args.get("backbone", "dinov2_vitb14")
+    
     backbone = DINOv2Extractor(
-        model_name=saved_args.get("backbone", "dinov2_vitb14"),
+        model_name=model_name,
         layer=args.layer,
         freeze=True,
     )
@@ -128,7 +131,7 @@ def main():
     ckpt_name = os.path.basename(args.checkpoint) if args.checkpoint else "Baseline"
     final_output.append(f"--- Evaluation Results: {ckpt_name} ---")
 
-    for alpha in [0.1, 0.05]:
+    for alpha in [0.2, 0.1, 0.05]:
         scores = [
             pck(p.unsqueeze(0), g.unsqueeze(0), img_size=args.img_size, alpha=alpha).item()
             for p, g in zip(all_pred, all_gt)
