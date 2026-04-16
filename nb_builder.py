@@ -1,12 +1,13 @@
 import json
 import os
 
-output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_Notebook.ipynb"
+# Cambiamo nome per forzare Google Drive a vedere un file nuovo
+output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_Final_Notebook.ipynb"
 
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
     "cells": [
-        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (Versione Finale)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (OFFICIAL FINAL)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 📦 0. Setup"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -18,7 +19,7 @@ nb = {
             "!pip install -r requirements.txt -q\n",
             "!pip install gradio -q\n",
             "!python dataloaders/download_spair.py --root ./data\n",
-            "# Per PF-Pascal (Stage 4), assicurati di avere i dati in ./data/PF-Pascal\n",
+            "# Per PF-Pascal (Stage 4), caricare i dati in ./data/PF-Pascal\n",
             "!mkdir -p ./data/PF-Pascal\n\n",
             "import os, torch, gc\n",
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
@@ -36,9 +37,9 @@ nb = {
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training Stage"]},
         {"cell_type": "code", "metadata": {}, "source": [
             "CKPT_PATH = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "if not os.path.exists(CKPT_PATH):\n",
-            "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir \"$DRIVE_CKPTS/lora_only\"\n",
-            "else: print(f'[OK] Checkpoint pronto.')"
+            "if not os.path.exists(f'/content/drive/MyDrive/AML/Checkpoints/lora_only/lora_only_best.pth'):\n",
+            "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir \"/content/drive/MyDrive/AML/Checkpoints/lora_only\"\n",
+            "else: print(f'[OK] Checkpoint già presente su Drive.')"
         ]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalizzazione e Robustezza"]},
@@ -59,4 +60,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print("Project_Notebook.ipynb RIGENERATO SENZA WGET ERRATO.")
+print(f"Creato nuovo file: {output_path}")
