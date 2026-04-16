@@ -22,10 +22,16 @@ class PFPascalDataset(Dataset):
         self.img_size = img_size
         self.pairs = []
         
-        # PF-Pascal typically has a specific set of pairs defined in .mat or .txt
-        # For a quick generalization test, we can build pairs from available annotations
-        # Here we assume a simplified structure or use the official pair list if available
-        self.anno_files = glob.glob(os.path.join(root, "Annotations", "*", "*.mat"))
+        # Support both 'Annotations' and 'annotations'
+        anno_dir = os.path.join(root, "Annotations")
+        if not os.path.exists(anno_dir):
+            anno_dir = os.path.join(root, "annotations")
+            
+        if os.path.exists(anno_dir):
+            self.anno_files = glob.glob(os.path.join(anno_dir, "*", "*.mat"))
+        else:
+            self.anno_files = []
+            print(f"[WARNING] Annotation directory not found in {root}")
         
         # Build pairs of images within the same category
         categories = {}
