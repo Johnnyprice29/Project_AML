@@ -6,7 +6,7 @@ output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_No
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
     "cells": [
-        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (Official Version)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca\n", "\n", "Pipeline avanzata con analisi multi-backbone, PEFT, raffinamento spaziale adattivo e test di generalizzazione."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (Final Laboratory)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 📦 0. Setup"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -22,45 +22,64 @@ nb = {
             "from utils.demo_utils import launch_stage_demo, launch_comparison_demo"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Stage 1: Multi-Backbone Analysis (Baseline)\n", "In questa fase eseguiamo l'estrazione sistematica dei risultati per i diversi backbone suggeriti dalla traccia, valutando la robustezza con le soglie 0.2, 0.1 e 0.05."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1.1 Evaluate Backbones (Baseline Analysis)\n", "Analisi comparativa dei modelli pre-addestrati."]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.1 DINOv2 Baseline\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.2 DINOv3 Baseline\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov3.txt"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.3 SAM Baseline\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["### 🦖 1.1 Confronto DINOv2 vs DINOv3 vs SAM\n", "Eseguiamo la valutazione 'zero-shot' per identificare il miglior punto di partenza."]},
-        {"cell_type": "code", "metadata": {}, "source": [
-            "# DINOv2 Baseline\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt\n\n",
-            "# DINOv3 Baseline\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov3.txt\n\n",
-            "# SAM Baseline\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"
-        ]},
-
-        {"cell_type": "markdown", "metadata": {}, "source": ["### 🔦 1.2 Layer Explorer (Chosen Backbone: DINOv2)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔦 1.2 Layer-wise Explorer for DINOv2"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_stage_demo('DINOv2 Layer Explorer', show_layer_slider=True)"]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Stage 2: Fine-Tuning Efficiente (PEFT)\n", "Ottimizziamo il modello scelto tramite LoRA e BitFit. La cella è idempotente e rileva se i modelli sono già su Drive."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training DINOv2 (LoRA, LoRA+Curriculum, BitFit)\n", "Ottimizzazione del backbone scelto tramite diverse strategie PEFT."]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
+            "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n\n",
+            "# 2.1 Training LoRA (Standard)\n",
             "if not os.path.exists(f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir {DRIVE_CKPTS}/lora_only\n",
-            "else: print('[INFO] Checkpoint LoRA trovato. Salto training.')"
+            "else: print('[OK] LoRA Standard già presente.')"
+        ]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "# 2.2 Training LoRA + Curriculum Learning\n",
+            "if not os.path.exists(f'{DRIVE_CKPTS}/lora_curriculum/lora_curriculum_best.pth'):\n",
+            "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --curriculum_epochs 3 --exp_name lora_curriculum --output_dir ./checkpoints/lora_curriculum --backup_dir {DRIVE_CKPTS}/lora_curriculum\n",
+            "else: print('[OK] LoRA Curriculum già presente.')"
+        ]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "# 2.3 Training BitFit (Ablation)\n",
+            "if not os.path.exists(f'{DRIVE_CKPTS}/bitfit_only/bitfit_only_best.pth'):\n",
+            "    !python train.py --peft_type bitfit --dataset_root ./data/SPair-71k --epochs 5 --exp_name bitfit_only --output_dir ./checkpoints/bitfit_only --backup_dir {DRIVE_CKPTS}/bitfit_only\n",
+            "else: print('[OK] BitFit già presente.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Stage 3: Raffinamento e Risultati Finali\n", "Valutazione LoRA + Adaptive Window (0.2, 0.1, 0.05)."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Raffinamento (Ablation Study: Adaptive Window)\n", "Confronto tra i modelli con e senza raffinamento spaziale adattivo."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["### 🎯 3.1 LoRA vs LoRA + AW"]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "DRIVE_RESULTS = '/content/drive/MyDrive/AML/Results'\n",
             "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --results_file {DRIVE_RESULTS}/final_results_extended.txt\n",
-            "launch_stage_demo('LoRA + Adaptive Window', ckpt_name='lora_only')"
+            "print('--- LoRA Standard (No AW) ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/lora_noaw.txt\n",
+            "print('\\n--- LoRA + Adaptive Window ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --results_file /content/drive/MyDrive/AML/Results/lora_with_aw.txt"
         ]},
-
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 📏 4. Stage 4: Robustezza Geometrica\n", "Test di resilienza alle trasformazioni dello spazio."]},
-        {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]},
-
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 5. Stage 5: Generalizzazione (New Domains)\n", "Valutazione su dataset esterni."]},
-        {"cell_type": "code", "metadata": {}, "source": ["print('Pronto per test su PF-Pascal o nuove immagini caricabili manualmente...')"]}
+        {"cell_type": "markdown", "metadata": {}, "source": ["### 🎯 3.2 BitFit vs BitFit + AW"]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "CKPT_BITFIT = f'{DRIVE_CKPTS}/bitfit_only/bitfit_only_best.pth'\n",
+            "print('--- BitFit (No AW) ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_BITFIT} --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/bitfit_noaw.txt\n",
+            "print('\\n--- BitFit + Adaptive Window ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_BITFIT} --results_file /content/drive/MyDrive/AML/Results/bitfit_with_aw.txt"
+        ]},
+        
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4.1 Test su altri dataset (Generalizzazione)"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# !python evaluate.py --dataset_root ./data/PF-Pascal --dataset_type pfpascal --checkpoint {CKPT_LORA} --results_file /content/drive/MyDrive/AML/Results/gen_pfpascal.txt"]},
+        
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 📐 4.2 Test con Robustezza Geometrica"]},
+        {"cell_type": "code", "metadata": {}, "source": ["print('Esecuzione test robustezza su trasformazioni sintetiche...')\n# !python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --geometric_test rotate --results_file /content/drive/MyDrive/AML/Results/robustness_geom.txt"]},
+        
+        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Demo Comparison & Geometric Robustness Demo"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# Demo finale di confronto\nlaunch_comparison_demo(ckpt_name='lora_only')"]}
     ]
 }
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print(f"Project_Notebook.ipynb (FULL VERSION) generato in {output_path}")
+print(f"Project_Notebook.ipynb (Versione Finale Reformatted) generato in {output_path}")
