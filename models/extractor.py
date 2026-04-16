@@ -56,7 +56,13 @@ class FeatureExtractor(nn.Module):
             sam = sam_model_registry[sam_type](checkpoint=None) 
             self.model = sam.image_encoder
             self.patch_size = 16 # SAM default patch size
-            self._feat_dim = self.model.embed_dim
+            
+            # SAM encoder doesn't have .embed_dim directly; we map it based on type
+            if sam_type == "vit_b": self._feat_dim = 768
+            elif sam_type == "vit_l": self._feat_dim = 1024
+            elif sam_type == "vit_h": self._feat_dim = 1280
+            else: self._feat_dim = 768
+            
             self.model_type = "sam"
         else:
             raise ValueError(f"Unknown backbone: {model_name}")
@@ -90,9 +96,9 @@ class FeatureExtractor(nn.Module):
             return feats
             
         elif self.model_type == "sam":
-            # SAM image_encoder returns (B, C, h, w) directly
-            # It expects input size 1024, but can work with others if positional embeddings are handled
-            # For baseline evaluation, we use it as is
+            # SAM image_encoder strictly expects 1024x1024
+            if H != 1024 or W != 1024:
+                x = torch.nn.functional.interpolate(x, size=(1024, 1024), mode="bilinear", align_corners=False)
             feats = self.model(x) 
             return feats
 
