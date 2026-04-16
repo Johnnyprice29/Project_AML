@@ -116,7 +116,6 @@ class FeatureExtractor(nn.Module):
             if H != 1024 or W != 1024:
                 x = torch.nn.functional.interpolate(x, size=(1024, 1024), mode="bilinear", align_corners=False)
             
-            # Use half precision and checkpointing to save memory on T4
             from torch.utils.checkpoint import checkpoint
             def custom_forward(images):
                 return self.model(images)
@@ -125,11 +124,13 @@ class FeatureExtractor(nn.Module):
             self.model.half()
             x = x.half()
             
-            # If training/finetuning, checkpointing is needed, but even in eval it helps on T4
-            with torch.cuda.amp.autocast():
-                feats = self.model(x)
+            # Use inference_mode and actual checkpointing call
+            with torch.inference_mode(), torch.amp.autocast('cuda'):
+                # We need to set requires_grad to True for checkpointing to trigger even if we don't backprop
+                x.requires_grad_(True) 
+                feats = checkpoint(custom_forward, x, use_reentrant=False)
             
-            return feats.float() # Convert back for correspondence consistency
+            return feats.float()
 
     def unfreeze(self):
         for p in self.model.parameters():

@@ -6,7 +6,7 @@ output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_No
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
     "cells": [
-        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (Official Release)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 📦 0. Setup"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -18,14 +18,18 @@ nb = {
             "!pip install -r requirements.txt -q\n",
             "!pip install gradio -q\n",
             "!python dataloaders/download_spair.py --root ./data\n\n",
-            "import os\n",
-            "from utils.demo_utils import launch_stage_demo, launch_comparison_demo, launch_robustness_demo"
+            "import os, torch, gc\n",
+            "from utils.demo_utils import launch_stage_demo, launch_comparison_demo, launch_robustness_demo\n\n",
+            "def clear_gpu():\n",
+            "    gc.collect()\n",
+            "    torch.cuda.empty_cache()\n",
+            "    print('[INFO] GPU Memory cleared.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1.1 Evaluate Backbones (Baseline Analysis)\n", "Analisi comparativa dei modelli pre-addestrati ViT-B (Non-distillati)."]},
-        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.1 DINOv2 Baseline (ViT-B/14)\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
-        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.2 DINOv2 with Registers (The real DINOv3 alternative)\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2_reg.txt"]},
-        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.3 SAM Baseline (ViT-B) - Batch Size stringente per evitare OOM su T4\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --batch_size 1 --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1.1 Evaluate Backbones (Baseline Analysis)"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.1 DINOv2 Baseline\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.2 DINOv2 with Registers (The real DINOv3 alternative)\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov3.txt"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.1.3 SAM Baseline (ViT-B) - Aggressive Memory Management\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --batch_size 1 --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🔦 1.2 Layer-wise Explorer for DINOv2"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_stage_demo('DINOv2 Layer Explorer', show_layer_slider=True)"]},
@@ -33,10 +37,10 @@ nb = {
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training DINOv2 (LoRA, LoRA+Curriculum)"]},
         {"cell_type": "code", "metadata": {}, "source": [
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n\n",
-            "# 2.1 Training LoRA Standard\n",
+            "# 2.1 Training LoRA\n",
             "if not os.path.exists(f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir {DRIVE_CKPTS}/lora_only\n",
-            "else: print('[OK] Modello LoRA già presente.')"
+            "else: print('[OK] LoRA già presente.')"
         ]},
         {"cell_type": "code", "metadata": {}, "source": [
             "# 2.2 Training LoRA + Curriculum\n",
@@ -48,7 +52,6 @@ nb = {
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Raffinamento (Ablation Study: Adaptive Window)"]},
         {"cell_type": "code", "metadata": {}, "source": [
             "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "print('--- Valutazione CON Adaptive Window ---')\n",
             "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --results_file /content/drive/MyDrive/AML/Results/lora_final_aw.txt"
         ]},
         
@@ -63,4 +66,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print(f"Project_Notebook.ipynb (Versione Anti-OOM) generato in {output_path}")
+print(f"Project_Notebook.ipynb (Versione Ultra-Robusta) generato in {output_path}")
