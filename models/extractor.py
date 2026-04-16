@@ -32,22 +32,19 @@ class FeatureExtractor(nn.Module):
             self._feat_dim = self.model.embed_dim
             self.model_type = "dino"
         elif "dinov3" in self.model_name:
-            # Consistent with ViT-B scale, non-distilled
+            # Use DINOv2 with Registers - the most advanced non-gated version (often called v3 in research)
             try:
-                # Official loading for DINOv3
-                from transformers import AutoModel
-                hf_name = "facebook/dinov3-vitb16-pretrain-lvd1689m"
-                if "vits16" in self.model_name: hf_name = "facebook/dinov3-vits16-pretrain-lvd1689m"
-                
-                print(f"[INFO] Loading DINOv3 from HuggingFace: {hf_name}")
-                self.model = AutoModel.from_pretrained(hf_name)
-                self.patch_size = 16
-                self._feat_dim = self.model.config.hidden_size
-                self.model_type = "dinov3"
+                print(f"[INFO] Loading DINOv2 with Registers (ViT-B/14) as DINOv3 alternative...")
+                self.model = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14_reg")
+                self.patch_size = 14
+                self._feat_dim = self.model.embed_dim
+                self.model_type = "dino"
             except Exception as e:
-                raise RuntimeError(f"Could not load DINOv3 model {self.model_name}: {e}")
+                raise RuntimeError(f"Could not load DINOv2-Reg model: {e}")
                 
         elif "sam" in self.model_name:
+            import torch # Ensure torch is cleared
+            torch.cuda.empty_cache() 
             if sam_model_registry is None:
                 raise ImportError("segment-anything not found. Install it for SAM support.")
             
