@@ -1,4 +1,8 @@
 import json
+import os
+
+# Definiamo il percorso assoluto per salvare il file direttamente nella cartella del progetto
+output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_Notebook.ipynb"
 
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
@@ -9,9 +13,9 @@ nb = {
         {"cell_type": "code", "metadata": {}, "source": [
             "from google.colab import drive\n",
             "drive.mount('/content/drive')\n\n",
-            "!git clone -b osagie5 https://github.com/Johnnyprice29/Project_AML.git /content/Project_AML\n",
+            "!git clone -b main https://github.com/Johnnyprice29/Project_AML.git /content/Project_AML\n",
             "%cd /content/Project_AML\n",
-            "!git fetch origin && git reset --hard origin/osagie5\n",
+            "!git fetch origin && git reset --hard origin/main\n",
             "!pip install -r requirements.txt -q\n",
             "!pip install gradio -q\n",
             "!python dataloaders/download_spair.py --root ./data\n\n",
@@ -30,35 +34,30 @@ nb = {
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "if not os.path.exists(f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir {DRIVE_CKPTS}/lora_only\n",
-            "else: print('[INFO] LoRA già addestrato.')"
+            "else:\n",
+            "    print('[INFO] LoRA già addestrato. Salto training.')"
         ]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Stage 3: Raffinamento e Risultati Finali\n", "Valutazione del modello LoRA + Adaptive Window."]},
         {"cell_type": "code", "metadata": {}, "source": [
             "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --results_file /content/drive/MyDrive/AML/Results/final_lora_aw.txt\n",
-            "launch_stage_demo('LoRA + Adaptive Window', ckpt_name='lora_only')"
+            "if os.path.exists(CKPT_LORA):\n",
+            "    !python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --results_file /content/drive/MyDrive/AML/Results/final_lora_aw.txt\n",
+            "    launch_stage_demo('LoRA + Adaptive Window', ckpt_name='lora_only')\n",
+            "else:\n",
+            "    print('[ERROR] Checkout LoRA non trovato. Lanciare lo Stage 2.')"
         ]},
 
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 📐 4. Stage 4: Geometric Tasks & Robustness\n", "Testiamo la capacità del modello di gestire trasformazioni geometriche sintetiche (rotazioni)."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 📐 4. Stage 4: Geometric Tasks & Resilience\n", "Valutazione sulla robustezza geometrica."]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "print('--- Test di invarianza geometrica ---')\n",
-            "# Qui potremmo lanciare uno script di test sintitico o usare la demo con immagini ruotate manualmente\n",
             "launch_comparison_demo(ckpt_name='lora_only')"
         ]},
 
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 5. Stage 5: Generalization (PF-Pascal)\n", "Valutazione del modello (senza ri-addestramento) su un nuovo dominio per testare la generalizzazione."]},
-        {"cell_type": "code", "metadata": {}, "source": [
-            "# Scarica PF-Pascal ( placeholder per comando wget/curl )\n",
-            "print('Valutazione su PF-Pascal in corso...')\n",
-            "# !python evaluate.py --dataset_root ./data/PF-Pascal --dataset_type pfpascal --checkpoint {CKPT_LORA} --results_file /content/drive/MyDrive/AML/Results/generalization_pf_pascal.txt"
-        ]},
-        
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🏆 6. Comparison Showcase\n", "Baseline vs Optimized."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🏆 5. Comparison Showcase (Baseline vs Optimized)"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]}
     ]
 }
 
-with open("Project_Notebook.ipynb", "w", encoding="utf-8") as f:
+with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print("Project_Notebook.ipynb (Versione Estesa) generato!")
+print(f"Project_Notebook.ipynb generato in {output_path}")
