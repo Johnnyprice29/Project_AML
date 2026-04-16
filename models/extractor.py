@@ -58,12 +58,8 @@ class FeatureExtractor(nn.Module):
             self.model = sam.image_encoder
             self.patch_size = 16 # SAM default patch size
             
-            # SAM encoder doesn't have .embed_dim directly; we map it based on type
-            if sam_type == "vit_b": self._feat_dim = 768
-            elif sam_type == "vit_l": self._feat_dim = 1024
-            elif sam_type == "vit_h": self._feat_dim = 1280
-            else: self._feat_dim = 768
-            
+            # SAM image_encoder has a 'neck' that projects everything to 256
+            self._feat_dim = 256
             self.model_type = "sam"
         else:
             raise ValueError(f"Unknown backbone: {model_name}")

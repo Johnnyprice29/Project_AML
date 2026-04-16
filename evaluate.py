@@ -19,6 +19,7 @@ from tqdm import tqdm
 import numpy as np
 
 from dataloaders.spair import SPairDataset, collate_spair
+from dataloaders.pfpascal import PFPascalDataset
 from models.extractor import DINOv2Extractor
 from models.lora import apply_lora_to_dinov2
 from models.correspondence import SemanticCorrespondenceModel
@@ -36,6 +37,7 @@ def parse_args():
     parser.add_argument("--batch_size",   type=int, default=16)
     parser.add_argument("--num_workers",  type=int, default=4)
     parser.add_argument("--backbone",     type=str, default="", help="Manual backbone choice (overrides checkpoint or default)")
+    parser.add_argument("--dataset_type",  type=str, default="spair", choices=["spair", "pfpascal"], help="Dataset type: spair or pfpascal")
     parser.add_argument("--no_adaptive_win", action="store_true", help="Disable adaptive window")
     parser.add_argument("--results_file", type=str, default="", help="Path to save text results")
     return parser.parse_args()
@@ -101,7 +103,11 @@ def main():
     model.eval()
 
     # ---- Dataset ----
-    test_ds     = SPairDataset(args.dataset_root, split="test", img_size=args.img_size)
+    if args.dataset_type == "spair":
+        test_ds = SPairDataset(args.dataset_root, split="test", img_size=args.img_size)
+    else:
+        test_ds = PFPascalDataset(args.dataset_root, img_size=args.img_size)
+
     test_loader = DataLoader(test_ds, batch_size=args.batch_size,
                              shuffle=False, num_workers=args.num_workers,
                              collate_fn=collate_spair)
