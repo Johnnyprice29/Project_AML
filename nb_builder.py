@@ -1,13 +1,12 @@
 import json
 import os
 
-# Definiamo il percorso assoluto per salvare il file direttamente nella cartella del progetto
 output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_Notebook.ipynb"
 
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
     "cells": [
-        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (Extended Version)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca\n", "\n", "Pipeline avanzata con analisi multi-backbone, PEFT, raffinamento adattivo e test di generalizzazione su nuovi domini e compiti geometrici."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (Official Version)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca\n", "\n", "Pipeline avanzata con analisi multi-backbone, PEFT, raffinamento spaziale adattivo e test di generalizzazione."]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 📦 0. Setup"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -23,41 +22,45 @@ nb = {
             "from utils.demo_utils import launch_stage_demo, launch_comparison_demo"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Stage 1: Backbone Analysis (Baseline & Multi-Threshold)\n", "Analisi comparativa seguendo le soglie PCK@0.05, 0.1 e 0.2."]},
-        {"cell_type": "code", "metadata": {}, "source": [
-            "!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2_extended.txt"
-        ]},
-        {"cell_type": "code", "metadata": {}, "source": ["# Esplorazione dei layer\nlaunch_stage_demo('DINOv2 Layer Explorer', show_layer_slider=True)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Stage 1: Multi-Backbone Analysis (Baseline)\n", "In questa fase eseguiamo l'estrazione sistematica dei risultati per i diversi backbone suggeriti dalla traccia, valutando la robustezza con le soglie 0.2, 0.1 e 0.05."]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Stage 2: Fine-Tuning Efficiente (PEFT)\n", "Addestramento LoRA e BitFit con logica di persistenza."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["### 🦖 1.1 Confronto DINOv2 vs DINOv3 vs SAM\n", "Eseguiamo la valutazione 'zero-shot' per identificare il miglior punto di partenza."]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "# DINOv2 Baseline\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt\n\n",
+            "# DINOv3 Baseline\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov3.txt\n\n",
+            "# SAM Baseline\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"
+        ]},
+
+        {"cell_type": "markdown", "metadata": {}, "source": ["### 🔦 1.2 Layer Explorer (Chosen Backbone: DINOv2)"]},
+        {"cell_type": "code", "metadata": {}, "source": ["launch_stage_demo('DINOv2 Layer Explorer', show_layer_slider=True)"]},
+        
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Stage 2: Fine-Tuning Efficiente (PEFT)\n", "Ottimizziamo il modello scelto tramite LoRA e BitFit. La cella è idempotente e rileva se i modelli sono già su Drive."]},
         {"cell_type": "code", "metadata": {}, "source": [
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "if not os.path.exists(f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir {DRIVE_CKPTS}/lora_only\n",
-            "else:\n",
-            "    print('[INFO] LoRA già addestrato. Salto training.')"
+            "else: print('[INFO] Checkpoint LoRA trovato. Salto training.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Stage 3: Raffinamento e Risultati Finali\n", "Valutazione del modello LoRA + Adaptive Window."]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Stage 3: Raffinamento e Risultati Finali\n", "Valutazione LoRA + Adaptive Window (0.2, 0.1, 0.05)."]},
         {"cell_type": "code", "metadata": {}, "source": [
+            "DRIVE_RESULTS = '/content/drive/MyDrive/AML/Results'\n",
             "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "if os.path.exists(CKPT_LORA):\n",
-            "    !python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --results_file /content/drive/MyDrive/AML/Results/final_lora_aw.txt\n",
-            "    launch_stage_demo('LoRA + Adaptive Window', ckpt_name='lora_only')\n",
-            "else:\n",
-            "    print('[ERROR] Checkout LoRA non trovato. Lanciare lo Stage 2.')"
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint {CKPT_LORA} --results_file {DRIVE_RESULTS}/final_results_extended.txt\n",
+            "launch_stage_demo('LoRA + Adaptive Window', ckpt_name='lora_only')"
         ]},
 
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 📐 4. Stage 4: Geometric Tasks & Resilience\n", "Valutazione sulla robustezza geometrica."]},
-        {"cell_type": "code", "metadata": {}, "source": [
-            "launch_comparison_demo(ckpt_name='lora_only')"
-        ]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 📏 4. Stage 4: Robustezza Geometrica\n", "Test di resilienza alle trasformazioni dello spazio."]},
+        {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]},
 
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🏆 5. Comparison Showcase (Baseline vs Optimized)"]},
-        {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]}
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 5. Stage 5: Generalizzazione (New Domains)\n", "Valutazione su dataset esterni."]},
+        {"cell_type": "code", "metadata": {}, "source": ["print('Pronto per test su PF-Pascal o nuove immagini caricabili manualmente...')"]}
     ]
 }
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print(f"Project_Notebook.ipynb generato in {output_path}")
+print(f"Project_Notebook.ipynb (FULL VERSION) generato in {output_path}")
