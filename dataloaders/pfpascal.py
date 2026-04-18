@@ -52,14 +52,16 @@ class PFPascalDataset(Dataset):
         anno1_path, anno2_path, category = self.pairs[idx]
         
         # Load .mat annotations
-        anno1 = sio.load_state_dict(sio.loadmat(anno1_path))['keypoints']
-        anno2 = sio.load_state_dict(sio.loadmat(anno2_path))['keypoints']
+        anno1 = sio.loadmat(anno1_path)['keypoints']
+        anno2 = sio.loadmat(anno2_path)['keypoints']
         
         # Get image paths (assuming same name as annotation)
         img1_name = os.path.basename(anno1_path).replace(".mat", ".jpg")
         img2_name = os.path.basename(anno2_path).replace(".mat", ".jpg")
-        img1_path = os.path.join(self.root, "JPEGImages", img1_name)
-        img2_path = os.path.join(self.root, "JPEGImages", img2_name)
+        
+        # Images are in JPEGImages/category/name.jpg
+        img1_path = os.path.join(self.root, "JPEGImages", category, img1_name)
+        img2_path = os.path.join(self.root, "JPEGImages", category, img2_name)
 
         img1 = Image.open(img1_path).convert('RGB')
         img2 = Image.open(img2_path).convert('RGB')
