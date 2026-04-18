@@ -293,14 +293,12 @@ def launch_robustness_demo(ckpt_name='lora_only'):
             return None, None
             
         import glob
-        # Troviamo tutte le immagini (non usiamo cartelle categoria qui per semplicità di scansione piana, o usiamo un metodo furbo)
         files = []
         for ext in ('*.jpg', '*.png'):
             files.extend(glob.glob(os.path.join(test_img_dir, '**', ext), recursive=True))
             
         if not files: return None, None
         
-        # Simuliamo lo stesso accoppiamento della comparison
         src_path = random.choice(files)
         cat = os.path.basename(os.path.dirname(src_path))
         trgs = [f for f in files if os.path.basename(os.path.dirname(f)) == cat and f != src_path]
@@ -308,8 +306,39 @@ def launch_robustness_demo(ckpt_name='lora_only'):
         trg_path = random.choice(trgs) if trgs else src_path
         return Image.open(src_path), Image.open(trg_path)
 
+    def get_custom_pair():
+        colab_base = '/content/drive/MyDrive' if os.path.exists('/content/drive/MyDrive') else '/content/drive/My Drive'
+        custom_dir = os.path.join(colab_base, 'AML/CustomImages') if os.path.exists('/content/drive') else 'g:/My Drive/AML/CustomImages'
+        
+        if not os.path.exists(custom_dir):
+            os.makedirs(custom_dir, exist_ok=True)
+            return None, None
+            
+        import glob
+        files = []
+        for ext in ('*.jpg', '*.png', '*.jpeg'):
+            files.extend(glob.glob(os.path.join(custom_dir, '**', ext), recursive=True))
+            
+        if not files: return None, None
+        
+        sources = [f for f in files if '_src' in f.lower()]
+        if not sources: 
+            src_path = random.choice(files)
+            trg_path = random.choice([f for f in files if f != src_path]) if len(files) > 1 else src_path
+            return Image.open(src_path), Image.open(trg_path)
+            
+        src_path = random.choice(sources)
+        base = os.path.basename(src_path).lower().replace('_src', '')
+        trgs = [f for f in files if '_trg' in f.lower() and base in os.path.basename(f).lower()]
+        trg_path = random.choice(trgs) if trgs else random.choice([f for f in files if '_trg' in f.lower()])
+        return Image.open(src_path), Image.open(trg_path)
+
     def load_random():
         s, t = get_random_pair()
+        return s, t
+
+    def load_custom():
+        s, t = get_custom_pair()
         return s, t
 
     def predict_robustness(src_img, trg_img, angle, evt: gr.SelectData):
@@ -345,25 +374,58 @@ def launch_robustness_demo(ckpt_name='lora_only'):
         
         return orig_res, rot_res, (sx, sy)
 
+    def save_robustness_match(src, res_orig, res_rot, coords):
+        if src is None or res_orig is None or res_rot is None:
+            return "❌ Nessun match da salvare."
+        
+        sx, sy = coords
+        colab_base = '/content/drive/MyDrive' if os.path.exists('/content/drive/MyDrive') else '/content/drive/My Drive'
+        save_dir = os.path.join(colab_base, 'AML/Results/Gradio_Captures') if os.path.exists('/content/drive') else 'g:/My Drive/AML/Results/Gradio_Captures'
+        os.makedirs(save_dir, exist_ok=True)
+        
+        w, h = src.size
+        src_with_pt = src.copy()
+        r = 8
+        ImageDraw.Draw(src_with_pt).ellipse([sx-r, sy-r, sx+r, sy+r], fill='yellow', outline='black', width=2)
+        
+        res_orig = res_orig.resize((w, h))
+        res_rot = res_rot.resize((w, h))
+        collage = Image.new('RGB', (w * 3, h))
+        collage.paste(src_with_pt, (0, 0))
+        collage.paste(res_orig, (w, 0))
+        collage.paste(res_rot, (w * 2, 0))
+        
+        import datetime
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        fname = f"robustness_{ts}.png"
+        path = os.path.join(save_dir, fname)
+        collage.save(path)
+        return f"✅ Salvato con successo in: {os.path.abspath(path)}"
+
     with gr.Blocks(title="Geometric Robustness Demo") as demo:
         last_coords = gr.State(value=(0, 0))
         gr.Markdown("# 📐 Interazione Robustezza Geometrica")
         gr.Markdown("Questa demo testa la resilienza del modello alle rotazioni libere. Carica una **coppia reale**, ruota il target e osserva se il modello ritrova il punto corretto.")
         
         with gr.Row():
-            src_input = gr.Image(label="Source Image (CLICCA QUI)", type="pil")
+            src_input = gr.Image(label="Source Image (CLICCA QUI o fai Drop)", type="pil", interactive=True)
             with gr.Column():
-                btn_rand = gr.Button("🎲 Carica Coppia Casuale (SPair)")
-                trg_input = gr.Image(label="Target Reference", type="pil")
+                with gr.Row():
+                    btn_rand = gr.Button("🎲 Carica da SPair")
+                    btn_custom = gr.Button("📁 Carica dal Mio Drive (CustomImages)")
+                trg_input = gr.Image(label="Target Reference (Dropea qui)", type="pil", interactive=True)
                 angle_slider = gr.Slider(-180, 180, value=0, step=5, label="Rotazione Target (gradi)")
         
         with gr.Row():
             out_orig = gr.Image(label="Target 0° (Previsione VERDE)", type="pil")
             out_rot = gr.Image(label="Target Ruotato (Previsione GIALLA)", type="pil")
+            
+        save_btn = gr.Button("💾 SALVA MATCH SU DRIVE")
+        status_msg = gr.Markdown("")
         
         btn_rand.click(load_random, outputs=[src_input, trg_input])
+        btn_custom.click(load_custom, outputs=[src_input, trg_input])
         src_input.select(predict_robustness, inputs=[src_input, trg_input, angle_slider], outputs=[out_orig, out_rot, last_coords])
-        # Se muove lo slider dopo aver cliccato, vogliamo aggiornare il risultato (richiede di rifare predict usando gli ultimi coords)
-        # Purtroppo SelectData non e' un input standard, quindi aggiorniamo solo all'onclick. User-friendly and fast enough.
+        save_btn.click(save_robustness_match, inputs=[src_input, out_orig, out_rot, last_coords], outputs=status_msg)
 
     demo.launch(share=True, debug=True)
