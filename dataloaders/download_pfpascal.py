@@ -51,6 +51,12 @@ def main():
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(pfpascal_path)
         print(f"[INFO] Extraction successful to {pfpascal_path}")
+        
+        macosx_dir = os.path.join(pfpascal_path, "__MACOSX")
+        if os.path.exists(macosx_dir):
+            import shutil
+            shutil.rmtree(macosx_dir)
+            
     except Exception as e:
         print(f"[ERROR] Extraction failed: {e}")
         return
