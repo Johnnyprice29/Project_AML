@@ -61,9 +61,9 @@ class PFPascalDataset(Dataset):
         img1_name = os.path.basename(anno1_path).replace(".mat", ".jpg")
         img2_name = os.path.basename(anno2_path).replace(".mat", ".jpg")
         
-        # Images are in JPEGImages/category/name.jpg
-        img1_path = os.path.join(self.root, "JPEGImages", category, img1_name)
-        img2_path = os.path.join(self.root, "JPEGImages", category, img2_name)
+        # Images are directly in JPEGImages/name.jpg
+        img1_path = os.path.join(self.root, "JPEGImages", img1_name)
+        img2_path = os.path.join(self.root, "JPEGImages", img2_name)
 
         img1 = Image.open(img1_path).convert('RGB')
         img2 = Image.open(img2_path).convert('RGB')
