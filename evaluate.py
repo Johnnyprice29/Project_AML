@@ -12,8 +12,10 @@ Usage:
 """
 
 import os
+import math
 import argparse
 import torch
+import torchvision.transforms.functional as TF
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
@@ -39,6 +41,8 @@ def parse_args():
     parser.add_argument("--backbone",     type=str, default="", help="Manual backbone choice (overrides checkpoint or default)")
     parser.add_argument("--dataset_type",  type=str, default="spair", choices=["spair", "pfpascal"], help="Dataset type: spair or pfpascal")
     parser.add_argument("--no_adaptive_win", action="store_true", help="Disable adaptive window")
+    parser.add_argument("--rotation_deg", type=float, default=0.0,
+                        help="Apply synthetic rotation (degrees) to target images for robustness test")
     parser.add_argument("--results_file", type=str, default="", help="Path to save text results")
     return parser.parse_args()
 
@@ -116,12 +120,26 @@ def main():
     # ---- Evaluation ----
     all_pred, all_gt, all_cats = [], [], []
 
-    for batch in tqdm(test_loader, desc="Evaluating"):
+    rot_desc = f" (rot={args.rotation_deg}°)" if args.rotation_deg else ""
+    for batch in tqdm(test_loader, desc=f"Evaluating{rot_desc}"):
         src_img = batch["src_img"].to(device)
         trg_img = batch["trg_img"].to(device)
         src_kps = batch["src_kps"].to(device)
         trg_kps = batch["trg_kps"].to(device)
         mask    = batch["kps_mask"].to(device)
+
+        # --- Synthetic rotation for robustness test ---
+        if args.rotation_deg != 0:
+            angle = args.rotation_deg
+            trg_img = TF.rotate(trg_img, angle)
+            # Rotate GT keypoints around image center
+            cx = cy = args.img_size / 2.0
+            rad = math.radians(-angle)  # TF.rotate is CCW, kps rotate CW
+            cos_a, sin_a = math.cos(rad), math.sin(rad)
+            x = trg_kps[..., 0] - cx
+            y = trg_kps[..., 1] - cy
+            trg_kps = torch.stack([cos_a * x - sin_a * y + cx,
+                                   sin_a * x + cos_a * y + cy], dim=-1)
 
         out = model(src_img, trg_img, src_kps=src_kps)
         pred_kps = out["pred_kps"]   # (B, N, 2)

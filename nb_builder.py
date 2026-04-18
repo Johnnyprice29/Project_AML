@@ -25,15 +25,21 @@ nb = {
             "def clear_gpu():\n",
             "    gc.collect()\n",
             "    torch.cuda.empty_cache()\n",
-            "    print('[INFO] GPU Cleared.')"
+            "    print('[INFO] GPU Cleared.')\n\n",
+            "# Auto-detect PF-Pascal root\n",
+            "import shutil as _sh\n",
+            "_macosx = './data/PF-Pascal/__MACOSX'\n",
+            "if os.path.exists(_macosx): _sh.rmtree(_macosx)\n",
+            "_contents = [d for d in os.listdir('./data/PF-Pascal') if os.path.isdir(os.path.join('./data/PF-Pascal', d))]\n",
+            "PASCAL_ROOT = os.path.join('./data/PF-Pascal', _contents[0]) if _contents else './data/PF-Pascal'\n",
+            "print(f'[INFO] PASCAL_ROOT: {PASCAL_ROOT}')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Baseline Evaluation"]},
-        {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Baseline Evaluation (SPair-71k)"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.1 DINOv2 Baseline\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training (Comparison PEFT)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training (LoRA vs BitFit)"]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "# 2.1 Training LoRA\n",
             "if not os.path.exists(f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir \"$DRIVE_CKPTS/lora_only\"\n",
@@ -46,29 +52,46 @@ nb = {
             "else: print('[OK] BitFit trovato.')"
         ]},
         
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Ablation Study: Adaptive Window"]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "print('--- LoRA + AW ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/lora_aw.txt\n",
+            "print('--- LoRA No AW ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/lora_no_aw.txt\n",
+            "print('--- BitFit + AW ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/bitfit_aw.txt\n",
+            "print('--- BitFit No AW ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/bitfit_no_aw.txt"
+        ]},
+        
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalization: PF-Pascal"]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "import os\n",
-            "# Identifichiamo la cartella corretta di PF-Pascal\n",
-            "base_pascal = './data/PF-Pascal'\n",
-            "contents = [d for d in os.listdir(base_pascal) if os.path.isdir(os.path.join(base_pascal, d)) and d != '__MACOSX']\n",
-            "PASCAL_ROOT = os.path.join(base_pascal, contents[0]) if contents else base_pascal\n",
-            "print(f'[INFO] Utilizzando PASCAL_ROOT: {PASCAL_ROOT}')\n\n",
+            "# 4.1 Baselines su PF-Pascal\n",
+            "clear_gpu()\n",
+            "print('--- PF-Pascal: DINOv2 Baseline ---')\n",
+            "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/gen_pascal_baseline_dinov2.txt\n",
+            "print('--- PF-Pascal: DINOv3 Baseline ---')\n",
+            "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --baseline_only --backbone dinov3 --results_file /content/drive/MyDrive/AML/Results/gen_pascal_baseline_dinov3.txt"
+        ]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "# 4.2 Fine-tuned su PF-Pascal\n",
             "print('--- PF-Pascal: LoRA ---')\n",
             "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_lora.txt\n",
             "print('--- PF-Pascal: BitFit ---')\n",
             "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_bitfit.txt"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Ablation Study: Adaptive Window (AW)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔄 5. Geometric Robustness (Rotation)"]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "print('--- LoRA ---')\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/lora_aw.txt\n",
-            "print('--- BitFit ---')\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/bitfit_aw.txt"
+            "# Robustezza a rotazione sintetica (15 gradi) su SPair-71k\n",
+            "clear_gpu()\n",
+            "print('--- LoRA: Rotation 15 deg ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --rotation_deg 15 --results_file /content/drive/MyDrive/AML/Results/lora_rot15.txt\n",
+            "print('--- BitFit: Rotation 15 deg ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --rotation_deg 15 --results_file /content/drive/MyDrive/AML/Results/bitfit_rot15.txt"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Visual Showcase"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎨 6. Visual Demos"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_robustness_demo(ckpt_name='lora_only')"]}
     ]
@@ -76,4 +99,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print("Project_Final_v2.ipynb sincronizzato con rilevamento automatico PASCAL_ROOT.")
+print("Project_Final_v2.ipynb COMPLETO: baseline multi-backbone, ablazione AW, PF-Pascal, rotazione.")
