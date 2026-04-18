@@ -6,7 +6,7 @@ output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_Fi
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
     "cells": [
-        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (COMPLETE PIPELINE)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (OFFICIAL FINAL V2)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 📦 0. Setup"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -28,12 +28,10 @@ nb = {
             "    print('[INFO] GPU Cleared.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Baseline Evaluation (Multi-Backbone)"]},
-        {"cell_type": "code", "metadata": {}, "source": ["# 1.1 DINOv2\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
-        {"cell_type": "code", "metadata": {}, "source": ["# 1.2 DINOv3 (Reg)\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov3.txt"]},
-        {"cell_type": "code", "metadata": {}, "source": ["# 1.3 SAM (ViT-B)\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --batch_size 1 --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Baseline Evaluation"]},
+        {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training Stage (PEFT Comparison)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training (Comparison PEFT)"]},
         {"cell_type": "code", "metadata": {}, "source": [
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "# 2.1 Training LoRA\n",
@@ -50,30 +48,23 @@ nb = {
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Ablation Study: Adaptive Window (AW)"]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "# 3.1 LoRA: No AW vs With AW\n",
-            "print('--- LoRA Only ---')\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/lora_no_aw.txt\n",
-            "print('--- LoRA + AW ---')\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/lora_aw.txt"
-        ]},
-        {"cell_type": "code", "metadata": {}, "source": [
-            "# 3.2 BitFit: No AW vs With AW\n",
-            "print('--- BitFit Only ---')\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/bitfit_no_aw.txt\n",
-            "print('--- BitFit + AW ---')\n",
+            "print('--- LoRA ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/lora_aw.txt\n",
+            "print('--- BitFit ---')\n",
             "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/bitfit_aw.txt"
         ]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalization: PF-Pascal"]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "PASCAL_ROOT = './data/PF-Pascal/PF-Pascal'\n",
+            "# Il Dataset si estrae in ./data/PF-Pascal/PF-dataset-PASCAL\n",
+            "PASCAL_ROOT = './data/PF-Pascal/PF-dataset-PASCAL'\n",
             "print('--- PF-Pascal: LoRA ---')\n",
-            "!python evaluate.py --dataset_root $PASCAL_ROOT --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_lora.txt\n",
+            "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_lora.txt\n",
             "print('--- PF-Pascal: BitFit ---')\n",
-            "!python evaluate.py --dataset_root $PASCAL_ROOT --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_bitfit.txt"
+            "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_bitfit.txt"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Visual Demos"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Visual Showcase"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_robustness_demo(ckpt_name='lora_only')"]}
     ]
@@ -81,4 +72,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print("Project_Final_v2.ipynb RIGENERATO con Stage 1, 3 (Ablazione) e 4 completi.")
+print("Project_Final_v2.ipynb sincronizzato con URL Willow corretto.")

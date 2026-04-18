@@ -5,7 +5,6 @@ import argparse
 from tqdm import tqdm
 
 def download_file(url, destination):
-    # Aggiungiamo un User-Agent per evitare blocchi dal server
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
     }
@@ -33,36 +32,27 @@ def main():
     pfpascal_path = os.path.join(args.root, "PF-Pascal")
     zip_path = os.path.join(args.root, "pfpascal.zip")
     
-    # Official URL
-    url = "https://www.di.ens.fr/willow/research/proposal/dataset/PF-Pascal.zip"
+    # Correct Official URL from project page
+    url = "https://www.di.ens.fr/willow/research/proposalflow/dataset/PF-dataset-PASCAL.zip"
 
-    if os.path.exists(os.path.join(pfpascal_path, "PF-Pascal")):
+    if os.path.exists(os.path.join(pfpascal_path, "PF-dataset-PASCAL")):
         print(f"[INFO] PF-Pascal already found at {pfpascal_path}. Skipping.")
         return
 
-    print(f"[INFO] Downloading PF-Pascal from official mirror...")
+    print(f"[INFO] Downloading PF-Pascal from official Willow mirror...")
     try:
         download_file(url, zip_path)
     except Exception as e:
-        print(f"[WARNING] Official link failed: {e}. Trying alternative mirror...")
-        # Mirror alternativo (es. se Willow è giù)
-        url_alt = "http://cs.unc.edu/~jlt/data/PF-Pascal.zip" # Esempio di mirror se disponibile
-        try:
-            download_file(url_alt, zip_path)
-        except Exception as e2:
-            print(f"[ERROR] All download attempts failed.")
-            return
+        print(f"[ERROR] Download failed: {e}")
+        return
 
     print(f"[INFO] Extracting...")
     try:
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(pfpascal_path)
-        print(f"[INFO] Extraction successful.")
+        print(f"[INFO] Extraction successful to {pfpascal_path}")
     except Exception as e:
-        print(f"[ERROR] Extraction failed: {e}. The downloaded file might be corrupted.")
-        if os.path.exists(zip_path):
-            with open(zip_path, 'r', errors='ignore') as f:
-                print(f"File content (first 100 chars): {f.read(100)}")
+        print(f"[ERROR] Extraction failed: {e}")
         return
     finally:
         if os.path.exists(zip_path):
