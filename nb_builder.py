@@ -1,13 +1,12 @@
 import json
 import os
 
-# Cambiamo di nuovo nome per essere sicuri al 100% che si aggiorni: Project_Final_v2.ipynb
 output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_Final_v2.ipynb"
 
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
     "cells": [
-        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (OFFICIAL FINAL V2)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (COMPLETE PIPELINE)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 📦 0. Setup"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -17,10 +16,10 @@ nb = {
             "%cd /content/Project_AML\n",
             "!git fetch origin && git reset --hard origin/main\n",
             "!pip install -r requirements.txt -q\n",
-            "!pip install gradio -q\n",
+            "!pip install gradio -q\n\n",
+            "# Scaricamento Dataset\n",
             "!python dataloaders/download_spair.py --root ./data\n",
-            "# Scaricamento PF-Pascal (Mirror Willow)\n",
-            "!mkdir -p ./data/PF-Pascal && wget -qO ./data/PF-Pascal/pfpascal.zip https://www.di.ens.fr/willow/research/proposal/dataset/PF-Pascal.zip && unzip -qo ./data/PF-Pascal/pfpascal.zip -d ./data/PF-Pascal/\n\n",
+            "!python dataloaders/download_pfpascal.py --root ./data\n\n",
             "import os, torch, gc\n",
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "def clear_gpu():\n",
@@ -29,42 +28,52 @@ nb = {
             "    print('[INFO] GPU Cleared.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Baseline Evaluation"]},
-        {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Baseline Evaluation (Multi-Backbone)"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.1 DINOv2\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.2 DINOv3 (Reg)\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov3.txt"]},
+        {"cell_type": "code", "metadata": {}, "source": ["# 1.3 SAM (ViT-B)\nclear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --batch_size 1 --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training (LoRA vs BitFit)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training Stage (PEFT Comparison)"]},
         {"cell_type": "code", "metadata": {}, "source": [
+            "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "# 2.1 Training LoRA\n",
-            "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "if not os.path.exists(CKPT_LORA):\n",
+            "if not os.path.exists(f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir \"$DRIVE_CKPTS/lora_only\"\n",
-            "else: print('[OK] LoRA checkpoint trovato.')"
+            "else: print('[OK] LoRA trovato.')"
         ]},
         {"cell_type": "code", "metadata": {}, "source": [
             "# 2.2 Training BitFit\n",
-            "CKPT_BITFIT = f'{DRIVE_CKPTS}/bitfit_only/bitfit_only_best.pth'\n",
-            "if not os.path.exists(CKPT_BITFIT):\n",
+            "if not os.path.exists(f'{DRIVE_CKPTS}/bitfit_only/bitfit_only_best.pth'):\n",
             "    !python train.py --peft_type bitfit --dataset_root ./data/SPair-71k --epochs 5 --exp_name bitfit_only --output_dir ./checkpoints/bitfit_only --backup_dir \"$DRIVE_CKPTS/bitfit_only\"\n",
-            "else: print('[OK] BitFit checkpoint trovato.')"
+            "else: print('[OK] BitFit trovato.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Raffinamento & Ablazione (LoRA vs BitFit)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Ablation Study: Adaptive Window (AW)"]},
         {"cell_type": "code", "metadata": {}, "source": [
+            "# 3.1 LoRA: No AW vs With AW\n",
+            "print('--- LoRA Only ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/lora_no_aw.txt\n",
             "print('--- LoRA + AW ---')\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/lora_aw.txt\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/lora_aw.txt"
+        ]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "# 3.2 BitFit: No AW vs With AW\n",
+            "print('--- BitFit Only ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/bitfit_no_aw.txt\n",
             "print('--- BitFit + AW ---')\n",
             "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/bitfit_aw.txt"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalizzazione & Robustezza (PF-Pascal)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalization: PF-Pascal"]},
         {"cell_type": "code", "metadata": {}, "source": [
+            "PASCAL_ROOT = './data/PF-Pascal/PF-Pascal'\n",
             "print('--- PF-Pascal: LoRA ---')\n",
-            "!python evaluate.py --dataset_root ./data/PF-Pascal/PF-Pascal --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_lora.txt\n",
+            "!python evaluate.py --dataset_root $PASCAL_ROOT --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_lora.txt\n",
             "print('--- PF-Pascal: BitFit ---')\n",
-            "!python evaluate.py --dataset_root ./data/PF-Pascal/PF-Pascal --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_bitfit.txt"
+            "!python evaluate.py --dataset_root $PASCAL_ROOT --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_bitfit.txt"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Demo Showcases"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Visual Demos"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_robustness_demo(ckpt_name='lora_only')"]}
     ]
@@ -72,4 +81,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print(f"Project_Final_v2.ipynb (LoRA+BitFit+Pascal) RIGENERATO in {output_path}")
+print("Project_Final_v2.ipynb RIGENERATO con Stage 1, 3 (Ablazione) e 4 completi.")
