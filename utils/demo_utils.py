@@ -257,7 +257,7 @@ def launch_comparison_demo(ckpt_name='lora_only'):
 # =============================================================================
 
 def launch_robustness_demo(ckpt_name='lora_only'):
-    import gradio as gr, torch, os, numpy as np
+    import gradio as gr, torch, os, random
     from PIL import Image, ImageDraw
     import torchvision.transforms as T
     import torchvision.transforms.functional as TF
@@ -267,7 +267,6 @@ def launch_robustness_demo(ckpt_name='lora_only'):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # 1. Load Optimized Model (Non-distilled ViT-B)
     backbone = DINOv2Extractor(model_name='dinov2_vitb14', layer=11, freeze=True)
     ckpt_path = f'/content/drive/MyDrive/AML/Checkpoints/{ckpt_name}/{ckpt_name}_best.pth'
     if os.path.exists(ckpt_path):
@@ -288,45 +287,83 @@ def launch_robustness_demo(ckpt_name='lora_only'):
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    def predict_robustness(src_img, angle, evt: gr.SelectData):
-        if src_img is None: return None, None
+    def get_random_pair():
+        test_img_dir = './data/SPair-71k/JPEGImages'
+        if not os.path.exists(test_img_dir): 
+            return None, None
+            
+        import glob
+        # Troviamo tutte le immagini (non usiamo cartelle categoria qui per semplicità di scansione piana, o usiamo un metodo furbo)
+        files = []
+        for ext in ('*.jpg', '*.png'):
+            files.extend(glob.glob(os.path.join(test_img_dir, '**', ext), recursive=True))
+            
+        if not files: return None, None
         
-        # Create a rotated target
-        trg_img = TF.rotate(src_img, angle, interpolation=T.InterpolationMode.BICUBIC)
+        # Simuliamo lo stesso accoppiamento della comparison
+        src_path = random.choice(files)
+        cat = os.path.basename(os.path.dirname(src_path))
+        trgs = [f for f in files if os.path.basename(os.path.dirname(f)) == cat and f != src_path]
         
+        trg_path = random.choice(trgs) if trgs else src_path
+        return Image.open(src_path), Image.open(trg_path)
+
+    def load_random():
+        s, t = get_random_pair()
+        return s, t
+
+    def predict_robustness(src_img, trg_img, angle, evt: gr.SelectData):
+        if src_img is None or trg_img is None: return None, None, (0,0)
+        
+        # 1. Original target prediction (0 degrees)
         sx, sy = evt.index[0], evt.index[1]
         s_t = transform(src_img).unsqueeze(0).to(device)
-        t_t = transform(trg_img).unsqueeze(0).to(device)
+        t_orig = transform(trg_img).unsqueeze(0).to(device)
         scale = (224 / src_img.width, 224 / src_img.height)
         src_kp = torch.tensor([[[sx * scale[0], sy * scale[1]]]], device=device).float()
         
         with torch.no_grad():
-            out = model(s_t, t_t, src_kps=src_kp)
-            pkp = out['pred_kps'][0,0].cpu().numpy()
-            tx, ty = pkp[0] * (trg_img.width/224), pkp[1] * (trg_img.height/224)
+            out_orig = model(s_t, t_orig, src_kps=src_kp)
+            pkp_orig = out_orig['pred_kps'][0,0].cpu().numpy()
+            tx_orig, ty_orig = pkp_orig[0] * (trg_img.width/224), pkp_orig[1] * (trg_img.height/224)
+
+        # 2. Rotated target prediction (angle degrees)
+        trg_rot_img = TF.rotate(trg_img, angle, interpolation=T.InterpolationMode.BICUBIC)
+        t_rot = transform(trg_rot_img).unsqueeze(0).to(device)
+        
+        with torch.no_grad():
+            out_rot = model(s_t, t_rot, src_kps=src_kp)
+            pkp_rot = out_rot['pred_kps'][0,0].cpu().numpy()
+            tx_rot, ty_rot = pkp_rot[0] * (trg_rot_img.width/224), pkp_rot[1] * (trg_rot_img.height/224)
 
         r = 8
-        s_res = src_img.copy()
-        ImageDraw.Draw(s_res).ellipse([sx-r, sy-r, sx+r, sy+r], fill='yellow', outline='black', width=2)
+        orig_res = trg_img.copy()
+        ImageDraw.Draw(orig_res).ellipse([tx_orig-r, ty_orig-r, tx_orig+r, ty_orig+r], fill='green', outline='white', width=2)
         
-        t_res = trg_img.copy()
-        ImageDraw.Draw(t_res).ellipse([tx-r, ty-r, tx+r, ty+r], fill='#00FF00', outline='white', width=2)
+        rot_res = trg_rot_img.copy()
+        ImageDraw.Draw(rot_res).ellipse([tx_rot-r, ty_rot-r, tx_rot+r, ty_rot+r], fill='yellow', outline='black', width=2)
         
-        return s_res, t_res
+        return orig_res, rot_res, (sx, sy)
 
     with gr.Blocks(title="Geometric Robustness Demo") as demo:
-        gr.Markdown("# 📐 Geometric Robustness Demo")
-        gr.Markdown("Questa demo testa la resilienza del modello alle rotazioni. Clicca sull'immagine originale e usa lo slider per ruotare l'immagine target.")
+        last_coords = gr.State(value=(0, 0))
+        gr.Markdown("# 📐 Interazione Robustezza Geometrica")
+        gr.Markdown("Questa demo testa la resilienza del modello alle rotazioni libere. Carica una **coppia reale**, ruota il target e osserva se il modello ritrova il punto corretto.")
         
         with gr.Row():
-            src_input = gr.Image(label="Original Image (Clicca)", type="pil")
-            angle_slider = gr.Slider(-180, 180, value=0, label="Rotazione Target (gradi)")
+            src_input = gr.Image(label="Source Image (CLICCA QUI)", type="pil")
+            with gr.Column():
+                btn_rand = gr.Button("🎲 Carica Coppia Casuale (SPair)")
+                trg_input = gr.Image(label="Target Reference", type="pil")
+                angle_slider = gr.Slider(-180, 180, value=0, step=5, label="Rotazione Target (gradi)")
         
         with gr.Row():
-            out_src = gr.Image(label="Source Location", type="pil")
-            out_trg = gr.Image(label="Predicted (Rotated Space)", type="pil")
+            out_orig = gr.Image(label="Target 0° (Previsione VERDE)", type="pil")
+            out_rot = gr.Image(label="Target Ruotato (Previsione GIALLA)", type="pil")
         
-        src_input.select(predict_robustness, inputs=[src_input, angle_slider], outputs=[out_src, out_trg])
-        angle_slider.change(predict_robustness, inputs=[src_input, angle_slider], outputs=[out_src, out_trg]) # Trigger re-prediction on rotate
+        btn_rand.click(load_random, outputs=[src_input, trg_input])
+        src_input.select(predict_robustness, inputs=[src_input, trg_input, angle_slider], outputs=[out_orig, out_rot, last_coords])
+        # Se muove lo slider dopo aver cliccato, vogliamo aggiornare il risultato (richiede di rifare predict usando gli ultimi coords)
+        # Purtroppo SelectData non e' un input standard, quindi aggiorniamo solo all'onclick. User-friendly and fast enough.
 
     demo.launch(share=True, debug=True)
