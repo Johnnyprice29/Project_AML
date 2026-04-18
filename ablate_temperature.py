@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=2)
     parser.add_argument("--alpha", type=float, default=0.1)
+    parser.add_argument("--results_file", type=str, default="", help="Path to save text results")
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -64,9 +65,18 @@ def main():
         print(f">> PCK@{args.alpha} @ T={T}  =>  {mean_pck:.2f}%\n")
 
     print("\n--- Final Calibration Summary ---")
+    summary_lines = ["--- Temperature Ablation Results ---"]
     for T, score in results.items():
         weight = "(Default/Sweet Spot)" if T == 0.05 else ""
-        print(f"Temperature {T}: {score:.2f}% {weight}")
+        line = f"Temperature {T}: {score:.2f}% {weight}"
+        print(line)
+        summary_lines.append(line)
+        
+    if args.results_file:
+        os.makedirs(os.path.dirname(args.results_file), exist_ok=True)
+        with open(args.results_file, "w") as f:
+            f.write("\n".join(summary_lines) + "\n")
+        print(f"[INFO] Results saved to {args.results_file}")
 
 if __name__ == '__main__':
     main()

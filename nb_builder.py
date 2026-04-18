@@ -101,7 +101,7 @@ nb = {
             "# 4.2 Ablation Temperatura (Calibration vs Regularizzazione)\n",
             "clear_gpu()\n",
             "print('--- Ablazione Temperatura su SPair ---')\n",
-            "!python ablate_temperature.py --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\""
+            "!python ablate_temperature.py --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/ablation_temperature.txt"
         ]},
         {"cell_type": "code", "metadata": {}, "source": [
             "# 4.3 Robustezza Geometrica (15\u00b0 Rotation su SPair)\n",
