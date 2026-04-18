@@ -1,12 +1,13 @@
 import json
 import os
 
-output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_Final_Notebook.ipynb"
+# Cambiamo di nuovo nome per essere sicuri al 100% che si aggiorni: Project_Final_v2.ipynb
+output_path = r"G:\My Drive\Magistrale\2year2semester\AML\Project_AML\Project_Final_v2.ipynb"
 
 nb = {
     "nbformat": 4, "nbformat_minor": 0, "metadata": {"accelerator": "GPU"},
     "cells": [
-        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (COMPLETE PIPELINE)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["# 🧬 Project 5 — Semantic Correspondence (OFFICIAL FINAL V2)\n", "**Team:** Johnprice Osagie · Mario Lapadula · Giorgia Pugliese · Riccardo Bellanca"]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## 📦 0. Setup"]},
         {"cell_type": "code", "metadata": {}, "source": [
@@ -18,8 +19,8 @@ nb = {
             "!pip install -r requirements.txt -q\n",
             "!pip install gradio -q\n",
             "!python dataloaders/download_spair.py --root ./data\n",
-            "# Per PF-Pascal, assicurati che la cartella sia in ./data/PF-Pascal\n",
-            "!mkdir -p ./data/PF-Pascal\n\n",
+            "# Scaricamento PF-Pascal (Mirror Willow)\n",
+            "!mkdir -p ./data/PF-Pascal && wget -qO ./data/PF-Pascal/pfpascal.zip https://www.di.ens.fr/willow/research/proposal/dataset/PF-Pascal.zip && unzip -qo ./data/PF-Pascal/pfpascal.zip -d ./data/PF-Pascal/\n\n",
             "import os, torch, gc\n",
             "DRIVE_CKPTS = '/content/drive/MyDrive/AML/Checkpoints'\n",
             "def clear_gpu():\n",
@@ -28,40 +29,42 @@ nb = {
             "    print('[INFO] GPU Cleared.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Evaluation Baseline (Multibackbone)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🔍 1. Baseline Evaluation"]},
         {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov2_vitb14 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov2.txt"]},
-        {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone dinov3 --results_file /content/drive/MyDrive/AML/Results/baseline_dinov3.txt"]},
-        {"cell_type": "code", "metadata": {}, "source": ["clear_gpu()\n!python evaluate.py --dataset_root ./data/SPair-71k --baseline_only --backbone sam_vitb --batch_size 1 --results_file /content/drive/MyDrive/AML/Results/baseline_sam.txt"]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training (LoRA, Curriculum)"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🚀 2. Training (LoRA vs BitFit)"]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "CKPT_PATH = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "if not os.path.exists(CKPT_PATH):\n",
+            "# 2.1 Training LoRA\n",
+            "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
+            "if not os.path.exists(CKPT_LORA):\n",
             "    !python train.py --peft_type lora --dataset_root ./data/SPair-71k --epochs 5 --exp_name lora_only --output_dir ./checkpoints/lora_only --backup_dir \"$DRIVE_CKPTS/lora_only\"\n",
-            "else: print(f'[OK] Checkpoint già presente.')"
-        ]},
-        
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Raffinamento (Adaptive Window Ablation)"]},
-        {"cell_type": "code", "metadata": {}, "source": [
-            "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "print('Valutazione CON Adaptive Window...')\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$CKPT_LORA\" --results_file /content/drive/MyDrive/AML/Results/lora_with_aw.txt\n",
-            "print('Valutazione SENZA Adaptive Window...')\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$CKPT_LORA\" --no_adaptive_win --results_file /content/drive/MyDrive/AML/Results/lora_no_aw.txt"
-        ]},
-        
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalizzazione e Robustezza"]},
-        {"cell_type": "code", "metadata": {}, "source": [
-            "CKPT_LORA = f'{DRIVE_CKPTS}/lora_only/lora_only_best.pth'\n",
-            "# Test PF-Pascal\n",
-            "!python evaluate.py --dataset_root ./data/PF-Pascal --dataset_type pfpascal --checkpoint \"$CKPT_LORA\" --results_file /content/drive/MyDrive/AML/Results/gen_pfpascal.txt"
+            "else: print('[OK] LoRA checkpoint trovato.')"
         ]},
         {"cell_type": "code", "metadata": {}, "source": [
-            "# Test Robustezza Geometrica\n",
-            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$CKPT_LORA\" --results_file /content/drive/MyDrive/AML/Results/robustness.txt"
+            "# 2.2 Training BitFit\n",
+            "CKPT_BITFIT = f'{DRIVE_CKPTS}/bitfit_only/bitfit_only_best.pth'\n",
+            "if not os.path.exists(CKPT_BITFIT):\n",
+            "    !python train.py --peft_type bitfit --dataset_root ./data/SPair-71k --epochs 5 --exp_name bitfit_only --output_dir ./checkpoints/bitfit_only --backup_dir \"$DRIVE_CKPTS/bitfit_only\"\n",
+            "else: print('[OK] BitFit checkpoint trovato.')"
         ]},
         
-        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Showcase Finali"]},
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Raffinamento & Ablazione (LoRA vs BitFit)"]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "print('--- LoRA + AW ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/lora_aw.txt\n",
+            "print('--- BitFit + AW ---')\n",
+            "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/bitfit_aw.txt"
+        ]},
+        
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalizzazione & Robustezza (PF-Pascal)"]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "print('--- PF-Pascal: LoRA ---')\n",
+            "!python evaluate.py --dataset_root ./data/PF-Pascal/PF-Pascal --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_lora.txt\n",
+            "print('--- PF-Pascal: BitFit ---')\n",
+            "!python evaluate.py --dataset_root ./data/PF-Pascal/PF-Pascal --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_bitfit.txt"
+        ]},
+        
+        {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Demo Showcases"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_comparison_demo(ckpt_name='lora_only')"]},
         {"cell_type": "code", "metadata": {}, "source": ["launch_robustness_demo(ckpt_name='lora_only')"]}
     ]
@@ -69,4 +72,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print("Project_Final_Notebook.ipynb (Versione 100% Completa) generata.")
+print(f"Project_Final_v2.ipynb (LoRA+BitFit+Pascal) RIGENERATO in {output_path}")
