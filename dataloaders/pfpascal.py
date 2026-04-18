@@ -54,8 +54,8 @@ class PFPascalDataset(Dataset):
         # Load .mat annotations
         anno1_mat = sio.loadmat(anno1_path)
         anno2_mat = sio.loadmat(anno2_path)
-        anno1 = anno1_mat.get('kps') or anno1_mat.get('keypoints')
-        anno2 = anno2_mat.get('kps') or anno2_mat.get('keypoints')
+        anno1 = anno1_mat['kps'] if 'kps' in anno1_mat else anno1_mat['keypoints']
+        anno2 = anno2_mat['kps'] if 'kps' in anno2_mat else anno2_mat['keypoints']
         
         # Get image paths (assuming same name as annotation)
         img1_name = os.path.basename(anno1_path).replace(".mat", ".jpg")
