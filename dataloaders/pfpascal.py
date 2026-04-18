@@ -52,8 +52,10 @@ class PFPascalDataset(Dataset):
         anno1_path, anno2_path, category = self.pairs[idx]
         
         # Load .mat annotations
-        anno1 = sio.loadmat(anno1_path)['keypoints']
-        anno2 = sio.loadmat(anno2_path)['keypoints']
+        anno1_mat = sio.loadmat(anno1_path)
+        anno2_mat = sio.loadmat(anno2_path)
+        anno1 = anno1_mat.get('kps') or anno1_mat.get('keypoints')
+        anno2 = anno2_mat.get('kps') or anno2_mat.get('keypoints')
         
         # Get image paths (assuming same name as annotation)
         img1_name = os.path.basename(anno1_path).replace(".mat", ".jpg")
