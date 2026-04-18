@@ -46,22 +46,26 @@ nb = {
             "else: print('[OK] BitFit trovato.')"
         ]},
         
+        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalization: PF-Pascal"]},
+        {"cell_type": "code", "metadata": {}, "source": [
+            "import os\n",
+            "# Identifichiamo la cartella corretta di PF-Pascal\n",
+            "base_pascal = './data/PF-Pascal'\n",
+            "contents = os.listdir(base_pascal)\n",
+            "PASCAL_ROOT = os.path.join(base_pascal, contents[0]) if contents else base_pascal\n",
+            "print(f'[INFO] Utilizzando PASCAL_ROOT: {PASCAL_ROOT}')\n\n",
+            "print('--- PF-Pascal: LoRA ---')\n",
+            "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_lora.txt\n",
+            "print('--- PF-Pascal: BitFit ---')\n",
+            "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_bitfit.txt"
+        ]},
+        
         {"cell_type": "markdown", "metadata": {}, "source": ["## 🎯 3. Ablation Study: Adaptive Window (AW)"]},
         {"cell_type": "code", "metadata": {}, "source": [
             "print('--- LoRA ---')\n",
             "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/lora_aw.txt\n",
             "print('--- BitFit ---')\n",
             "!python evaluate.py --dataset_root ./data/SPair-71k --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/bitfit_aw.txt"
-        ]},
-        
-        {"cell_type": "markdown", "metadata": {}, "source": ["## 🌍 4. Generalization: PF-Pascal"]},
-        {"cell_type": "code", "metadata": {}, "source": [
-            "# Il Dataset si estrae in ./data/PF-Pascal/PF-dataset-PASCAL\n",
-            "PASCAL_ROOT = './data/PF-Pascal/PF-dataset-PASCAL'\n",
-            "print('--- PF-Pascal: LoRA ---')\n",
-            "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/lora_only/lora_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_lora.txt\n",
-            "print('--- PF-Pascal: BitFit ---')\n",
-            "!python evaluate.py --dataset_root \"$PASCAL_ROOT\" --dataset_type pfpascal --checkpoint \"$DRIVE_CKPTS/bitfit_only/bitfit_only_best.pth\" --results_file /content/drive/MyDrive/AML/Results/gen_pascal_bitfit.txt"
         ]},
         
         {"cell_type": "markdown", "metadata": {}, "source": ["## ⚖️ 5. Visual Showcase"]},
@@ -72,4 +76,4 @@ nb = {
 
 with open(output_path, "w", encoding="utf-8") as f:
     json.dump(nb, f, indent=2)
-print("Project_Final_v2.ipynb sincronizzato con URL Willow corretto.")
+print("Project_Final_v2.ipynb sincronizzato con rilevamento automatico PASCAL_ROOT.")
