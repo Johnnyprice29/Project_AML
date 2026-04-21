@@ -144,30 +144,37 @@ def launch_comparison_demo(ckpt_name='lora_only'):
     if not os.path.exists(test_img_dir):
         test_img_dir = 'g:/My Drive/Magistrale/2year2semester/AML/Project_AML/test_images'
 
-    def get_random_pair():
-        if not os.path.exists(test_img_dir): return None, None
-        files = [f for f in os.listdir(test_img_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        if not files: return None, None
-        
-        sources = [f for f in files if '_src' in f]
-        if not sources: return None, None
-        src_name = random.choice(sources)
-        
-        # Estrazione INTELLIGENTE della categoria (es: real_car, cross_cat, etc.)
-        # Funziona cercando il prefisso principale prima dei tag _src/_trg
-        import re
-        cat = src_name.split('_src')[0]
-        # Cerchiamo un target della STESSA categoria
-        trgs = [f for f in files if f.startswith(cat) and '_trg' in f]
-        
-        if not trgs:
-            # Fallback a stessa categoria generale (es: car, cat) se non c'e' match esatto
-            gen_cat = re.split(r'[_\d]', cat)[0]
-            trgs = [f for f in files if f.startswith(gen_cat) and '_trg' in f]
-            
-        trg_name = random.choice(trgs) if trgs else random.choice([f for f in files if '_trg' in f])
-        
         return Image.open(os.path.join(test_img_dir, src_name)), Image.open(os.path.join(test_img_dir, trg_name))
+
+    def get_random_pfpascal_pair():
+        root = './data/PF-Pascal'
+        if not os.path.exists(root):
+            root = '../data/PF-Pascal'
+        if not os.path.exists(root):
+            return None, None
+            
+        anno_dir = os.path.join(root, "Annotations")
+        if not os.path.exists(anno_dir):
+            anno_dir = os.path.join(root, "annotations")
+            
+        if not os.path.exists(anno_dir):
+            return None, None
+            
+        import glob
+        cats = [d for d in os.listdir(anno_dir) if os.path.isdir(os.path.join(anno_dir, d))]
+        if not cats: return None, None
+        
+        cat = random.choice(cats)
+        annos = glob.glob(os.path.join(anno_dir, cat, "*.mat"))
+        if len(annos) < 2: return None, None
+        
+        a1, a2 = random.sample(annos, 2)
+        i1_name = os.path.basename(a1).replace(".mat", ".jpg")
+        i2_name = os.path.basename(a2).replace(".mat", ".jpg")
+        
+        img1 = Image.open(os.path.join(root, "JPEGImages", i1_name)).convert("RGB")
+        img2 = Image.open(os.path.join(root, "JPEGImages", i2_name)).convert("RGB")
+        return img1, img2
 
     def predict(src_img, trg_img, evt: gr.SelectData):
         if src_img is None or trg_img is None: return None, None, (0, 0)
@@ -228,6 +235,10 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         s, t = get_random_pair()
         return s, t
 
+    def load_pascal():
+        s, t = get_random_pfpascal_pair()
+        return s, t
+
     with gr.Blocks(title="AML Comparison Demo") as demo:
         last_coords = gr.State(value=(0, 0))
         gr.Markdown("# 🧬 Interactive Comparison: Baseline vs Our Model")
@@ -236,7 +247,9 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         with gr.Row():
             src_input = gr.Image(label="Source Image (Clicca)", type="pil")
             with gr.Column():
-                btn_rand = gr.Button("🎲 Carica Coppia Casuale")
+                with gr.Row():
+                    btn_rand = gr.Button("🎲 Carica Demo Image")
+                    btn_pascal = gr.Button("🖼️ Carica da PF-Pascal")
                 trg_input = gr.Image(label="Target Image", type="pil")
         
         with gr.Row():
@@ -247,6 +260,7 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         status_msg = gr.Markdown("")
 
         btn_rand.click(load_random, outputs=[src_input, trg_input])
+        btn_pascal.click(load_pascal, outputs=[src_input, trg_input])
         src_input.select(predict, inputs=[src_input, trg_input], outputs=[out_base, out_aw, last_coords])
         save_btn.click(save_match, inputs=[src_input, out_base, out_aw, last_coords], outputs=status_msg)
 
@@ -337,8 +351,8 @@ def launch_robustness_demo(ckpt_name='lora_only'):
         s, t = get_random_pair()
         return s, t
 
-    def load_custom():
-        s, t = get_custom_pair()
+    def load_pascal():
+        s, t = get_random_pfpascal_pair()
         return s, t
 
     def predict_robustness(src_img, trg_img, angle, evt: gr.SelectData):
@@ -412,7 +426,7 @@ def launch_robustness_demo(ckpt_name='lora_only'):
             with gr.Column():
                 with gr.Row():
                     btn_rand = gr.Button("🎲 Carica da SPair")
-                    btn_custom = gr.Button("📁 Carica dal Mio Drive (CustomImages)")
+                    btn_custom = gr.Button("🖼️ Carica da PF-Pascal")
                 trg_input = gr.Image(label="Target Reference (Dropea qui)", type="pil", interactive=True)
                 angle_slider = gr.Slider(-180, 180, value=0, step=5, label="Rotazione Target (gradi)")
         
@@ -424,7 +438,7 @@ def launch_robustness_demo(ckpt_name='lora_only'):
         status_msg = gr.Markdown("")
         
         btn_rand.click(load_random, outputs=[src_input, trg_input])
-        btn_custom.click(load_custom, outputs=[src_input, trg_input])
+        btn_custom.click(load_pascal, outputs=[src_input, trg_input])
         src_input.select(predict_robustness, inputs=[src_input, trg_input, angle_slider], outputs=[out_orig, out_rot, last_coords])
         save_btn.click(save_robustness_match, inputs=[src_input, out_orig, out_rot, last_coords], outputs=status_msg)
 
