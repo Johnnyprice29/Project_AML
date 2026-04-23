@@ -6,66 +6,116 @@
 \usepackage{amssymb}
 \usepackage{booktabs}
 \usepackage{hyperref}
+\usepackage{subcaption}
+\usepackage{authblk}
 
-\title{Project 5: High-Performance Semantic Correspondence via PEFT and Adaptive Windowing}
-\author{Johnprice Osagie \and Mario Lapadula \and Giorgia Pugliese \and Riccardo Bellanca}
-\date{April 2026}
+\title{\textbf{Adapting Vision Foundation Models for Semantic Correspondence: A Study on PEFT and Adaptive Spatial Refinement}}
+
+\author[1]{Johnprice Osagie}
+\author[1]{Mario Lapadula}
+\author[1]{Giorgia Pugliese}
+\author[1]{Riccardo Bellanca}
+\affil[1]{Politecnico di Torino, Corso di Laurea in Ingegneria Informatica}
+
+\date{Academic Year 2023/2024}
 
 \begin{document}
 
 \maketitle
 
 \begin{abstract}
-This report details the implementation and evaluation of a high-performance pipeline for semantic correspondence using DINOv2 backbones. We investigate Parameter-Efficient Fine-Tuning (PEFT) strategies, specifically LoRA and BitFit, and introduce an Adaptive Window Soft-Argmax refinement stage. Our final model (LoRA + Adaptive Window) achieves a state-of-the-art result of 80.53\% PCK@0.1 on the SPair-71k test set, representing a significant improvement of +36\% over the zero-shot DINOv2 baseline.
+Establishing dense semantic correspondences remains a fundamental challenge in computer vision. While large-scale Foundation Models like DINOv2 provide robust feature representations, their zero-shot application to part-level matching often suffers from spatial imprecision. In this work, we propose a two-pronged adaptation strategy. First, we explore Parameter-Efficient Fine-Tuning (PEFT) using LoRA and BitFit to specialize the backbone for coordinate regression. Second, we introduce an entropy-calibrated Adaptive Window Soft-Argmax stage to refine spatial localization. Our final pipeline (LoRA + AW) achieves 80.53\% PCK@0.10 on the SPair-71k dataset, outperforming the zero-shot baseline by a significant margin (+36\%) while training only 1.03\% of the model parameters.
 \end{abstract}
 
 \section{Introduction}
-Semantic correspondence aims to establish dense matches between images of different objects within the same category. Challenges include viewpoint changes, scale variations, and inter-instance appearance shifts. We leverage the powerful features of DINOv2 and optimize the trade-off between performance and computational efficiency using PEFT.
+Semantic correspondence concerns the task of establishing point-to-point matches between two images of different instances belonging to the same semantic category. Unlike classic geometric matching, semantic correspondence must handle high intra-class variations, occlusions, and non-rigid deformations. 
+
+Recent advances in Self-Supervised Learning (SSL), particularly DINOv2, have demonstrated that Vision Transformers (ViTs) can learn object-centric representations without human supervision. However, extracting sub-pixel accurate correspondences from these models requires careful calibration. In this report, we analyze the impact of efficient adaptation techniques and spatial filtering mechanisms to maximize matching precision.
 
 \section{Methodology}
-\subsection{Backbone and Extraction}
-We utilize DINOv2 (ViT-B/14) as our feature extractor. Preliminary analysis confirms that semantic information is most concentrated in the deeper layers (Layer 11 for our pipeline).
+\subsection{Backbone: DINOv2}
+We employ DINOv2 (ViT-B/14) as our primary feature extractor. Let $I_s$ and $I_t$ be the source and target images. We extract features $F_s, F_t \in \mathbb{R}^{H \times W \times D}$ from a specific layer $L$. Our empirical analysis (Sec. \ref{sec:layerwise}) identifies the penultimate layer ($L=11$) as the most semantically rich.
 
-\subsection{Efficient Fine-Tuning (LoRA vs. BitFit)}
-We compare two PEFT strategies:
+\subsection{Low-Rank Adaptation (LoRA)}
+To adapt the backbone efficiently, we freeze the original weights $W_0$ and inject trainable low-rank matrices. For a linear layer $y = W_0 x$, the modified forward pass is:
+\begin{equation}
+    y = W_0 x + \frac{\gamma}{r} (A B) x
+\end{equation}
+where $A \in \mathbb{R}^{d \times r}$ and $B \in \mathbb{R}^{r \times k}$ are low-rank matrices ($r=16$), and $\gamma$ is a scaling factor. This allows the model to learn task-specific semantic shifts without full re-training.
+
+\subsection{BitFit Analysis}
+As a baseline for efficiency, we also evaluate BitFit, which limits training to only the bias terms of the network:
+\begin{equation}
+    y = W_0 x + (b_0 + \Delta b)
+\end{equation}
+Surprisingly, BitFit achieves competitive results (Table \ref{tab:pck}), proving that many semantic shifts in foundation models can be captured by simple bias translations.
+
+\subsection{Spatial Refinement: Adaptive Windowing}
+The standard correlation map $C = \text{cosine\_sim}(F_s, F_t)$ often contains secondary peaks due to background clutter. We propose an \textbf{Adaptive Window (AW)} approach. Before the Soft-Argmax, we filter the scores:
+\begin{equation}
+    C'_{i,j} = 
+    \begin{cases} 
+    C_{i,j}, & \text{if } C_{i,j} > \tau \\
+    -\infty, & \text{otherwise}
+    \end{cases}
+\end{equation}
+where $\tau$ is a quantile-based threshold. This limits the localized soft-weighted average to the primary semantic neighborhood.
+
+\section{Experimental Setup}
 \begin{itemize}
-    \item \textbf{LoRA}: Injects low-rank matrices into the attention layers. It provides the best accuracy (81.86\% on validation).
-    \item \textbf{BitFit}: Optimizes only the bias parameters. It is extremely efficient and reaches competitive results (80.19\% on validation).
+    \item \textbf{Datasets}: SPair-71k (Main), PF-Pascal (OOD testing).
+    \item \textbf{Hardware}: Google Colab (Tesla T4/L4 GPUs).
+    \item \textbf{Hyperparameters}: Learning rate $1 \times 10^{-4}$, 5 epochs, AdamW optimizer, batch size 16.
 \end{itemize}
 
-\subsection{Stage 3: Adaptive Window Refinement}
-To improve sub-pixel precision, we implement an entropy-based \textbf{Adaptive Window Soft-Argmax}. This stage dynamically restricts the correspondence search area around the peak similarity, significantly boosting PCK@0.05 metrics.
+\section{Results}
+\subsection{Zero-Shot Baselines}
+Comparing DINOv2 with DINOv3 and SAM (Segment Anything Model) reveals a stark difference in semantic awareness. SAM, while great for segmentation, lacks the discriminative features needed for correspondence (PCK < 20\%).
+% PLACEHOLDER: fig:baselines
+% [IMAGE: 01_Baselines_SPair.png]
 
-\section{Experimental Results}
-\subsection{Quantitative Analysis}
-Table \ref{tab:pck} summarizes the results on the SPair-71k test set.
+\subsection{Quantitative Results}
+As shown in Table \ref{tab:pck}, the LoRA + AW combination yields the highest precision, particularly in the strict PCK@0.05 regime.
 
 \begin{table}[h]
 \centering
-\caption{PCK results on SPair-71k Test Set.}
+\caption{PCK evaluation on SPair-71k test set.}
 \label{tab:pck}
 \begin{tabular}{@{}lcc@{}}
 \toprule
-Model & PCK@0.10 & PCK@0.05 \\ \midrule
-Baseline (DINOv2) & 44.47\% & 24.65\% \\
+Architecture & PCK@0.10 & PCK@0.05 \\ \midrule
+Baseline DINOv2 & 43.88\% & 24.28\% \\
 BitFit (Smooth) & 75.40\% & 50.81\% \\
-BitFit + Adaptive Window & 77.83\% & 55.48\% \\
-LoRA (Smooth) & 78.13\% & 55.40\% \\
-\textbf{LoRA + Adaptive Window} & \textbf{80.53\%} & \textbf{61.36\%} \\ \bottomrule
+BitFit + AW & 77.83\% & 55.48\% \\
+LoRA (Standard)  & 78.13\% & 55.40\% \\
+\textbf{LoRA + AW} & \textbf{80.53\%} & \textbf{61.36\%} \\ \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Training Dynamics}
-Figure \ref{fig:curves} shows the validation PCK@0.1 over 5 epochs. BitFit shows rapid convergence, while LoRA maintains a consistent accuracy lead.
+\subsection{Temperature and Regularization}
+Temperature scaling ($T$) is used to sharpen the Soft-Argmax distribution. $T \to 0$ approaches Hard-Argmax, while $T=0.05$ (our choice) provides a soft-spatial regularizer that enables sub-pixel accuracy while maintaining differentiability.
+% PLACEHOLDER: fig:temp
+% [IMAGE: 07_Temperature_Calibration.png]
 
-\begin{figure}[h]
-\centering
-\includegraphics[width=\linewidth]{training_comparison.png}
-\caption{Training curves for LoRA and BitFit.}
-\label{fig:curves}
-\end{figure}
+\subsection{Layer-wise Analysis} \label{sec:layerwise}
+Lower layers (L4, L8) capture textures and parts but lack the global category knowledge of L11.
+% PLACEHOLDER: fig:layerwise
+% [IMAGE: 09_LayerWise_Analysis.png]
 
-\section{Discussion and Conclusion}
-The integration of Adaptive Windowing proves critical, providing a +5.96\% boost to the PCK@0.05 score for LoRA. Our results demonstrate that even with minimal parameter updates (1.03\% trainable parameters), DINOv2 can be adapted to become a highly precise semantic matcher.
+\subsection{Robustness and Generalization}
+The model maintains a +20\% lead over frozen baselines on PF-Pascal, proving that the PEFT adaptation is not dataset-overfitted but semantically general. Synthetic rotation tests show that while ViT backbones degrade under 90°/180° rotations, the adapted layers provide a higher stability baseline.
+% PLACEHOLDER: fig:robustness
+% [IMAGE: 06_Robustness_Rotation.png]
+
+\section{Qualitative Analysis and Demo}
+We developed an interactive Gradio dashboard to visualize results. Our qualitative analysis confirms that the Adaptive Window successfully suppresses "ghosting" artifacts in images with complex backgrounds.
+% PLACEHOLDER: fig:qualitative_collage
+% [IMAGE: Gradio_Captures/collage.png]
+
+\section{Future Work}
+Future research should focus on \textbf{V-JEPA} (Vision Joint-Embedding Predictive Architecture). Unlike DINOv2, JEPA-style training aims at learning world dynamics and causal relationships, which could drastically improve semantic correspondence in dynamic videos or under extreme occlusion.
+
+\section{Conclusion}
+By combining low-rank adapters with adaptive spatial filtering, we demonstrate that foundation models can be turned into highly accurate semantic matchers with negligible computational cost.
 
 \end{document}
