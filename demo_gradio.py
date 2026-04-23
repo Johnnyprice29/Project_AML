@@ -10,11 +10,16 @@ import torchvision.transforms as T
 from models.extractor import DINOv2Extractor
 from models.lora import apply_lora_to_dinov2
 from models.correspondence import SemanticCorrespondenceModel
+import random
+from dataloaders.spair import SPairDataset
+from dataloaders.pfpascal import PFPascalDataset
 
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_dir", type=str, default="./checkpoints", help="Directory containing .pth files")
     parser.add_argument("--img_size", type=int, default=224)
+    parser.add_argument("--spair_dir", type=str, default="./data/SPair-71k")
+    parser.add_argument("--pascal_dir", type=str, default="./data/PF-Pascal")
     parser.add_argument("--share", action="store_true")
     return parser.parse_args()
 
@@ -47,6 +52,54 @@ def main():
 
     # Cache per i modelli caricati
     models_cache = {}
+
+    # Inizializziamo i dataset per il caricamento randomico se disponibili
+    spair_ds = None
+    pascal_ds = None
+    
+    try:
+        spair_ds = SPairDataset(args.spair_dir, split="val", transform=lambda x: x)
+    except Exception as e:
+        print(f"[WARNING] Could not load SPairDataset: {e}")
+
+    try:
+        pascal_ds = PFPascalDataset(args.pascal_dir, transform=lambda x: x)
+    except Exception as e:
+        print(f"[WARNING] Could not load PFPascalDataset: {e}")
+
+    def load_random_spair():
+        if not spair_ds or len(spair_ds) == 0:
+            return None, None
+        idx = random.randint(0, len(spair_ds) - 1)
+        # Il dataset senza transform restituisce dizionari con PIL Image nei campi src_img/trg_img, ma occhio ai tensori
+        # Purtroppo PFPascal e SPair hanno dei numpy array/tensori misti. Carichiamo a mano usando la logica del dataset:
+        try:
+            ann_path = spair_ds.samples[idx]
+            import json
+            with open(ann_path, "r") as f:
+                ann = json.load(f)
+            cat = ann.get("category", os.path.basename(os.path.dirname(ann_path)))
+            src_img = spair_ds._load_image(cat, ann["src_imname"])
+            trg_img = spair_ds._load_image(cat, ann["trg_imname"])
+            return src_img, trg_img
+        except Exception as e:
+            print(f"Error loading SPair: {e}")
+            return None, None
+
+    def load_random_pascal():
+        if not pascal_ds or len(pascal_ds.pairs) == 0:
+            return None, None
+        idx = random.randint(0, len(pascal_ds.pairs) - 1)
+        try:
+            anno1_path, anno2_path, category = pascal_ds.pairs[idx]
+            img1_name = os.path.basename(anno1_path).replace(".mat", ".jpg")
+            img2_name = os.path.basename(anno2_path).replace(".mat", ".jpg")
+            img1 = Image.open(os.path.join(pascal_ds.root, "JPEGImages", img1_name)).convert("RGB")
+            img2 = Image.open(os.path.join(pascal_ds.root, "JPEGImages", img2_name)).convert("RGB")
+            return img1, img2
+        except Exception as e:
+            print(f"Error loading Pascal: {e}")
+            return None, None
 
     def predict(src_img, trg_img, src_x, src_y, ckpt_name, use_aw):
         if ckpt_name not in models_cache:
@@ -90,11 +143,18 @@ def main():
             aw_toggle = gr.Checkbox(value=True, label="Usa Adaptive Window (Stage 3)")
         
         with gr.Row():
-            src_in = gr.Image(type="pil", label="Source (Clicca qui)")
+            btn_spair = gr.Button("🎲 Load Random SPair-71k Pair")
+            btn_pascal = gr.Button("🎲 Load Random PF-Pascal Pair")
+            
+        with gr.Row():
+            src_in = gr.Image(type="pil", label="Source (Clicca per selezionare un keypoint)")
             trg_in = gr.Image(type="pil", label="Target Image")
         with gr.Row():
             src_out = gr.Image(type="pil", label="Source Selection")
             trg_out = gr.Image(type="pil", label="Target Prediction")
+            
+        btn_spair.click(load_random_spair, inputs=[], outputs=[src_in, trg_in])
+        btn_pascal.click(load_random_pascal, inputs=[], outputs=[src_in, trg_in])
             
         src_in.select(gradio_fn, inputs=[src_in, trg_in, ckpt_dropdown, aw_toggle], outputs=[src_out, trg_out])
 
