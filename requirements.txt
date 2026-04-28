@@ -16,3 +16,4 @@ transformers>=4.36.0
 safetensors>=0.4.0
 segment-anything>=1.0
 gradio>=4.0.0
+torchao>=0.16.0
