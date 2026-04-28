@@ -140,40 +140,85 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
-    test_img_dir = '/content/Project_AML/test_images'
-    if not os.path.exists(test_img_dir):
-        test_img_dir = 'g:/My Drive/Magistrale/2year2semester/AML/Project_AML/test_images'
-
-        return Image.open(os.path.join(test_img_dir, src_name)), Image.open(os.path.join(test_img_dir, trg_name))
+    def get_random_spair_pair():
+        test_img_dir = './data/SPair-71k/JPEGImages'
+        if not os.path.exists(test_img_dir):
+            print(f"[DEBUG] SPair JPEGImages not found at {test_img_dir}")
+            return None, None
+        import glob
+        files = []
+        for ext in ('*.jpg', '*.png'):
+            files.extend(glob.glob(os.path.join(test_img_dir, '**', ext), recursive=True))
+        if not files:
+            print("[DEBUG] No SPair images found.")
+            return None, None
+        src_path = random.choice(files)
+        cat = os.path.basename(os.path.dirname(src_path))
+        trgs = [f for f in files if os.path.basename(os.path.dirname(f)) == cat and f != src_path]
+        trg_path = random.choice(trgs) if trgs else src_path
+        return Image.open(src_path).convert("RGB"), Image.open(trg_path).convert("RGB")
 
     def get_random_pfpascal_pair():
-        root = './data/PF-Pascal'
-        if not os.path.exists(root):
-            root = '../data/PF-Pascal'
-        if not os.path.exists(root):
+        # Try multiple possible roots
+        candidates = [
+            './data/PF-Pascal',
+            '../data/PF-Pascal',
+        ]
+        # Check for nested subfolder (e.g. PF-Pascal/PF-PASCAL)
+        for c in list(candidates):
+            if os.path.exists(c):
+                subs = [d for d in os.listdir(c) if os.path.isdir(os.path.join(c, d)) and d != '__MACOSX']
+                for s in subs:
+                    candidates.insert(0, os.path.join(c, s))
+        
+        root = None
+        for c in candidates:
+            anno_test = os.path.join(c, "Annotations")
+            if not os.path.exists(anno_test):
+                anno_test = os.path.join(c, "annotations")
+            if os.path.exists(anno_test):
+                root = c
+                break
+        
+        if root is None:
+            print(f"[DEBUG] PF-Pascal root not found. Tried: {candidates}")
             return None, None
-            
+        
         anno_dir = os.path.join(root, "Annotations")
         if not os.path.exists(anno_dir):
             anno_dir = os.path.join(root, "annotations")
-            
-        if not os.path.exists(anno_dir):
-            return None, None
+        
+        print(f"[DEBUG] PF-Pascal root: {root}")
+        print(f"[DEBUG] Annotations dir: {anno_dir}")
             
         import glob
         cats = [d for d in os.listdir(anno_dir) if os.path.isdir(os.path.join(anno_dir, d))]
-        if not cats: return None, None
+        if not cats:
+            print(f"[DEBUG] No category subdirs found in {anno_dir}")
+            return None, None
         
         cat = random.choice(cats)
         annos = glob.glob(os.path.join(anno_dir, cat, "*.mat"))
-        if len(annos) < 2: return None, None
+        if len(annos) < 2:
+            print(f"[DEBUG] Category '{cat}' has < 2 annotations")
+            return None, None
         
         a1, a2 = random.sample(annos, 2)
         i1_name = os.path.basename(a1).replace(".mat", ".jpg")
         i2_name = os.path.basename(a2).replace(".mat", ".jpg")
         
-        img1 = Image.open(os.path.join(root, "JPEGImages", i1_name)).convert("RGB")
-        img2 = Image.open(os.path.join(root, "JPEGImages", i2_name)).convert("RGB")
+        # Try flat JPEGImages first, then category subfolder
+        jpeg_dir = os.path.join(root, "JPEGImages")
+        p1 = os.path.join(jpeg_dir, i1_name)
+        if not os.path.exists(p1): p1 = os.path.join(jpeg_dir, cat, i1_name)
+        p2 = os.path.join(jpeg_dir, i2_name)
+        if not os.path.exists(p2): p2 = os.path.join(jpeg_dir, cat, i2_name)
+        
+        print(f"[DEBUG] Loading img1: {p1} (exists={os.path.exists(p1)})")
+        print(f"[DEBUG] Loading img2: {p2} (exists={os.path.exists(p2)})")
+        
+        img1 = Image.open(p1).convert("RGB")
+        img2 = Image.open(p2).convert("RGB")
         return img1, img2
 
     def predict(src_img, trg_img, evt: gr.SelectData):
@@ -232,7 +277,7 @@ def launch_comparison_demo(ckpt_name='lora_only'):
         return f"✅ Salvato con successo in: {os.path.abspath(path)}"
 
     def load_random():
-        s, t = get_random_pair()
+        s, t = get_random_spair_pair()
         return s, t
 
     def load_pascal():
@@ -248,7 +293,7 @@ def launch_comparison_demo(ckpt_name='lora_only'):
             src_input = gr.Image(label="Source Image (Clicca)", type="pil")
             with gr.Column():
                 with gr.Row():
-                    btn_rand = gr.Button("🎲 Carica Demo Image")
+                    btn_rand = gr.Button("🎲 Carica da SPair-71k")
                     btn_pascal = gr.Button("🖼️ Carica da PF-Pascal")
                 trg_input = gr.Image(label="Target Image", type="pil")
         
@@ -351,8 +396,62 @@ def launch_robustness_demo(ckpt_name='lora_only'):
         s, t = get_random_pair()
         return s, t
 
+    def get_random_pfpascal_pair_robust():
+        # Try multiple possible roots
+        candidates = [
+            './data/PF-Pascal',
+            '../data/PF-Pascal',
+        ]
+        for c in list(candidates):
+            if os.path.exists(c):
+                subs = [d for d in os.listdir(c) if os.path.isdir(os.path.join(c, d)) and d != '__MACOSX']
+                for s in subs:
+                    candidates.insert(0, os.path.join(c, s))
+        
+        root = None
+        for c in candidates:
+            anno_test = os.path.join(c, "Annotations")
+            if not os.path.exists(anno_test):
+                anno_test = os.path.join(c, "annotations")
+            if os.path.exists(anno_test):
+                root = c
+                break
+        
+        if root is None:
+            print(f"[DEBUG] PF-Pascal root not found. Tried: {candidates}")
+            return None, None
+        
+        anno_dir = os.path.join(root, "Annotations")
+        if not os.path.exists(anno_dir):
+            anno_dir = os.path.join(root, "annotations")
+        
+        import glob
+        cats = [d for d in os.listdir(anno_dir) if os.path.isdir(os.path.join(anno_dir, d))]
+        if not cats: return None, None
+        
+        cat = random.choice(cats)
+        annos = glob.glob(os.path.join(anno_dir, cat, "*.mat"))
+        if len(annos) < 2: return None, None
+        
+        a1, a2 = random.sample(annos, 2)
+        i1_name = os.path.basename(a1).replace(".mat", ".jpg")
+        i2_name = os.path.basename(a2).replace(".mat", ".jpg")
+        
+        jpeg_dir = os.path.join(root, "JPEGImages")
+        p1 = os.path.join(jpeg_dir, i1_name)
+        if not os.path.exists(p1): p1 = os.path.join(jpeg_dir, cat, i1_name)
+        p2 = os.path.join(jpeg_dir, i2_name)
+        if not os.path.exists(p2): p2 = os.path.join(jpeg_dir, cat, i2_name)
+        
+        print(f"[DEBUG] Loading Pascal img1: {p1} (exists={os.path.exists(p1)})")
+        print(f"[DEBUG] Loading Pascal img2: {p2} (exists={os.path.exists(p2)})")
+        
+        img1 = Image.open(p1).convert("RGB")
+        img2 = Image.open(p2).convert("RGB")
+        return img1, img2
+
     def load_pascal():
-        s, t = get_random_pfpascal_pair()
+        s, t = get_random_pfpascal_pair_robust()
         return s, t
 
     def predict_robustness(src_img, trg_img, angle, evt: gr.SelectData):
