@@ -103,8 +103,15 @@ class PFPascalDataset(Dataset):
         # --- Load images ---
         img1_name = os.path.basename(anno1_path).replace(".mat", ".jpg")
         img2_name = os.path.basename(anno2_path).replace(".mat", ".jpg")
-        img1 = Image.open(os.path.join(self.root, "JPEGImages", img1_name)).convert("RGB")
-        img2 = Image.open(os.path.join(self.root, "JPEGImages", img2_name)).convert("RGB")
+        
+        p1 = os.path.join(self.root, "JPEGImages", img1_name)
+        if not os.path.exists(p1): p1 = os.path.join(self.root, "JPEGImages", category, img1_name)
+            
+        p2 = os.path.join(self.root, "JPEGImages", img2_name)
+        if not os.path.exists(p2): p2 = os.path.join(self.root, "JPEGImages", category, img2_name)
+            
+        img1 = Image.open(p1).convert("RGB")
+        img2 = Image.open(p2).convert("RGB")
 
         # --- Scale keypoints to resized image space ---
         orig1 = np.array(img1.size, dtype=np.float32)  # (W, H)

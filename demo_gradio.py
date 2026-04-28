@@ -94,8 +94,15 @@ def main():
             anno1_path, anno2_path, category = pascal_ds.pairs[idx]
             img1_name = os.path.basename(anno1_path).replace(".mat", ".jpg")
             img2_name = os.path.basename(anno2_path).replace(".mat", ".jpg")
-            img1 = Image.open(os.path.join(pascal_ds.root, "JPEGImages", img1_name)).convert("RGB")
-            img2 = Image.open(os.path.join(pascal_ds.root, "JPEGImages", img2_name)).convert("RGB")
+            
+            p1 = os.path.join(pascal_ds.root, "JPEGImages", img1_name)
+            if not os.path.exists(p1): p1 = os.path.join(pascal_ds.root, "JPEGImages", category, img1_name)
+            
+            p2 = os.path.join(pascal_ds.root, "JPEGImages", img2_name)
+            if not os.path.exists(p2): p2 = os.path.join(pascal_ds.root, "JPEGImages", category, img2_name)
+            
+            img1 = Image.open(p1).convert("RGB")
+            img2 = Image.open(p2).convert("RGB")
             return img1, img2
         except Exception as e:
             print(f"Error loading Pascal: {e}")
