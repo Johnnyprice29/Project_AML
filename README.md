@@ -31,29 +31,31 @@ Project_AML/
 ├── dataloaders/                 # Python code for data loading
 │   ├── __init__.py
 │   ├── download_spair.py        # Script to download SPair-71k
-│   └── spair.py                 # SPairDataset class with keypoint rescaling
+│   ├── download_pfpascal.py     # Script to download PF-Pascal
+│   ├── spair.py                 # SPairDataset class
+│   └── pfpascal.py              # PFPascalDataset class
 │
 ├── models/
-│   ├── extractor.py             # DINOv2 feature extractor → dense (B, C, h, w) maps
-│   ├── lora.py                  # LoRA via peft + manual reference implementation
-│   └── correspondence.py        # Full model: cost volume + Adaptive Window + SAM masking
+│   ├── extractor.py             # DINOv2 feature extractor
+│   ├── lora.py                  # LoRA implementation
+│   └── correspondence.py        # Cost volume + Adaptive Window + SAM
 │
 ├── utils/
-│   ├── metrics.py               # PCK@α (global and per-category)
-│   ├── matching.py              # Cosine cost volume, mutual NN, soft-argmax
-│   ├── visualization.py         # Keypoint match drawing, cost volume heatmaps
+│   ├── metrics.py               # PCK@α evaluation
+│   ├── matching.py              # Cost volume & NN matching
+│   ├── visualization.py         # Drawing matches & heatmaps
 │   ├── adaptive_window.py       # ★ Adaptive Window Soft-Argmax
 │   ├── curriculum.py            # ★ Curriculum Learning sampler
-│   └── segment_aware.py         # ★ SAM-based Segment-Aware Correspondence
+│   ├── segment_aware.py         # ★ SAM masking
+│   └── demo_utils.py            # ★ Gradio Demos (Comparison, Robustness, SAM)
 │
-├── data/                        # Downloaded dataset (NOT pushed to GitHub)
-│   └── SPair-71k/               # Auto-created by download_spair.py
-│
-├── checkpoints/                 # Saved model weights (NOT pushed to GitHub)
+├── data/                        # Datasets (SPair-71k, PF-Pascal)
+├── checkpoints/                 # Saved model weights
 ├── train.py                     # Training entry point
-├── evaluate.py                  # Evaluation: PCK@0.1 and PCK@0.05 per category
+├── evaluate.py                  # Evaluation on SPair/Pascal
+├── ablate_temperature.py        # Ablation study on softmax temperature
+├── Notebook_training_eval.ipynb # Development notebook
 ├── requirements.txt
-├── CHANGES.md                   # Detailed explanation of all implemented extensions
 └── README.md
 ```
 
@@ -69,24 +71,28 @@ conda activate sem_corr
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Download the dataset
+# 3. Download the datasets
 python dataloaders/download_spair.py --root ./data
+python dataloaders/download_pfpascal.py --root ./data
 
-# 4. (Opzionale) Per Segment-Aware: installa SAM e scarica i pesi
+# 4. (Optional) For Segment-Aware: install SAM and download weights
 pip install git+https://github.com/facebookresearch/segment-anything.git
-# Windows: Invoke-WebRequest -Uri https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth -OutFile sam_vit_b.pth
-# Linux/Mac: wget https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+# Download sam_vit_b_01ec64.pth to project root
 ```
 
 ---
 
-## 📊 Dataset — SPair-71k
+## 📊 Datasets
 
+### SPair-71k
 [SPair-71k](https://cvlab.postech.ac.kr/research/SPair-71k/) is the standard benchmark for semantic correspondence.
+- **18** categories, **70k** pairs.
+- Metadata (viewpoint, scale, etc.) used for **Curriculum Learning**.
 
-- **18** object categories, **70,958** annotated image pairs
-- Metadata per pair: viewpoint variation (`vpvar`), scale variation (`scvar`), truncation (`trncvar`) — used by the Curriculum sampler
-- Download: `python dataloaders/download_spair.py --root ./datasets`
+### PF-Pascal
+[PF-Pascal](https://www.di.ens.fr/willow/research/proposalflow/) is a smaller, classic benchmark.
+- **20** Pascal VOC categories.
+- Used for cross-dataset validation and robustness testing.
 
 ---
 
@@ -182,9 +188,25 @@ python train.py ... --no_adaptive_win
 
 ```bash
 python evaluate.py \
-    --dataset_root ./datasets/SPair-71k \
+    --dataset_root ./data/SPair-71k \
     --checkpoint ./checkpoints/best.pth \
     --alpha 0.1
+```
+
+---
+
+## 🎮 Interactive Demos
+
+We provide several interactive Gradio demos in `utils/demo_utils.py`, primarily designed for use in Jupyter Notebooks/Colab:
+
+- **Comparison Demo**: Side-by-side comparison between the Baseline and our fine-tuned model.
+- **Robustness Demo**: Test how the model handles arbitrary geometric rotations.
+- **Segment-Aware Demo**: Visualise how SAM-based masking improves matching precision.
+
+To launch them in a notebook:
+```python
+from utils.demo_utils import launch_comparison_demo
+launch_comparison_demo(ckpt_name='my_best_model')
 ```
 
 ---
