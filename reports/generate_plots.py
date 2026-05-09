@@ -29,7 +29,8 @@ colors = ['#A93226', '#2471A3', '#7D3C98', '#2E4053', '#1B4F72', '#512E5F']
 # ==============================================================================
 plt.figure(figsize=(8, 5))
 labels = ['DINOv2 (ViT-B/14)', 'DINOv3 (ViT-B)', 'SAM (ViT-B)']
-values = [44.48, 45.11, 6.40]
+values = [43.88, 44.49, 6.41]
+
 bars = plt.bar(labels, values, color=[colors[0], colors[1], colors[2]], width=0.6)
 plt.title('Baseline Zero-Shot Performance on SPair-71k', fontsize=14, pad=15)
 plt.ylabel('PCK@0.10 (%)', fontsize=12)
@@ -44,7 +45,8 @@ save_plot("01_Baselines_SPair")
 # ==============================================================================
 plt.figure(figsize=(8, 5))
 labels = ['DINOv2 Zero-Shot', 'BitFit + AW', 'LoRA + AW']
-values = [44.48, 78.41, 80.85]
+values = [43.88, 77.83, 80.53]
+
 bars = plt.bar(labels, values, color=[colors[3], colors[1], colors[0]], width=0.6)
 plt.title('Impact of Parameter-Efficient Fine-Tuning (SPair-71k)', fontsize=14, pad=15)
 plt.ylabel('PCK@0.10 (%)', fontsize=12)
@@ -59,8 +61,9 @@ save_plot("02_PEFT_Main_Results")
 # ==============================================================================
 plt.figure(figsize=(9, 6))
 methods = ['LoRA', 'BitFit']
-no_aw = [78.47, 75.98]
-with_aw = [80.85, 78.41]
+no_aw = [78.13, 75.40]
+with_aw = [80.53, 77.83]
+
 
 x = np.arange(len(methods))
 width = 0.35
@@ -86,8 +89,9 @@ save_plot("03_Ablation_AdaptiveWindow")
 plt.figure(figsize=(8, 5))
 labels = ['DINOv2 Zero-Shot', 'DINOv3 Zero-Shot', 'BitFit (Finetuned)', 'LoRA (Finetuned)']
 # Dati SPair corrispondenti per il confronto
-spair_values = [44.48, 45.11, 78.41, 80.85] 
-values = [24.15, 24.10, 42.20, 44.32]
+spair_values = [43.88, 44.49, 77.83, 80.53] 
+values = [26.76, 26.76, 46.26, 47.92]
+
 
 # Barre "fantasma" per mostrare la degradazione da SPair
 plt.bar(labels, spair_values, color=[colors[3], colors[5], colors[1], colors[0]], alpha=0.15, edgecolor='black', linestyle='--', width=0.6, label='SPair-71k (In-Dist)')
@@ -109,8 +113,9 @@ save_plot("04_Generalization_PFPascal")
 # ==============================================================================
 plt.figure(figsize=(6, 5))
 labels = ['LoRA Standard', 'LoRA Curriculum']
-pure = [78.47, 77.60]
-aw = [80.85, 80.09]
+pure = [78.13, 77.13]
+aw = [80.53, 79.60]
+
 
 # Barre base
 plt.bar(labels, pure, color=[colors[0], colors[2]], width=0.5, label='Standard Training')
@@ -134,12 +139,11 @@ save_plot("05_Curriculum_Learning")
 # ==============================================================================
 plt.figure(figsize=(9, 6))
 angles = [0, 45, 90, 180]
-# NOTA: Solo risultati puri (estratti dal run). Il 15° è rimosso.
-lora_rot_pck = [78.47, 61.73, 43.22, 28.81]
-bitfit_rot_pck = [75.98, 56.38, 41.01, 29.46]
-# Dati reali estratti dalle baseline su colab
-dinov2_rot_pck = [44.48, 36.28, 28.14, 23.50]
-dinov3_rot_pck = [45.11, 36.62, 30.55, 24.21]
+lora_rot_pck = [78.13, 61.60, 42.60, 28.06]
+bitfit_rot_pck = [75.40, 56.03, 40.26, 28.57]
+dinov2_rot_pck = [43.88, 35.63, 27.55, 22.82]
+dinov3_rot_pck = [44.49, 36.04, 29.98, 23.68]
+
 
 plt.plot(angles, lora_rot_pck, marker='o', linewidth=2, label='LoRA', color=colors[0])
 plt.plot(angles, bitfit_rot_pck, marker='s', linewidth=2, label='BitFit', color=colors[1])
@@ -206,7 +210,8 @@ save_plot("08_Parameter_Efficiency")
 # ==============================================================================
 plt.figure(figsize=(7, 5))
 labels = ['Layer 4 (Low-Level)', 'Layer 8 (Mid-Level)', 'Layer 11 (High-Level)']
-values = [14.00, 20.29, 43.97]
+values = [13.96, 20.15, 43.38]
+
 bars = plt.bar(labels, values, color=[colors[4], colors[3], colors[1]], width=0.5)
 plt.title('DINOv2 Layer-wise Semantic Capacity', fontsize=14, pad=15)
 plt.ylabel('PCK@0.10 (%)', fontsize=12)
